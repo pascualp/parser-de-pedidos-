@@ -1,0 +1,5 @@
+{
+  "name": "Parser de Pedidos a Excel",
+  "description": "Aplicación para parsear texto de pedidos de diferentes formatos (HM, AMADIP, CARIBBEAN, etc.) a formato tabla y copiar a Excel.",
+  "requestFramePermissions": []
+}
