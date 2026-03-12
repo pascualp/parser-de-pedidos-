@@ -835,6 +835,18 @@ function OccidentalParser() {
     }
   };
 
+  const aplicarCodigosGuardados = () => {
+    setRows(rows.map(r => {
+      if (!r.material && r.desc) {
+        const savedCode = memoria[r.desc.toUpperCase().trim()];
+        if (savedCode) {
+          return { ...r, material: savedCode };
+        }
+      }
+      return r;
+    }));
+  };
+
   const copiarParaExcel = async () => {
     let excelData = "Material\tDescripción\tCantidad\n"; 
     rows.forEach(row => {
@@ -875,6 +887,9 @@ function OccidentalParser() {
           </button>
           <button onClick={borrarColumnaMaterial} className="px-4 py-2 bg-[#d32f2f] text-white font-bold rounded hover:bg-red-700 transition-colors">
             Vaciar Columna Material
+          </button>
+          <button onClick={aplicarCodigosGuardados} className="px-4 py-2 bg-[#1976d2] text-white font-bold rounded hover:bg-blue-800 transition-colors">
+            Aplicar Códigos Guardados
           </button>
           <button onClick={copiarParaExcel} className="px-4 py-2 bg-[#2e7d32] text-white font-bold rounded hover:bg-green-800 transition-colors">
             3. Copiar para EXCEL
@@ -1306,6 +1321,25 @@ export default function App() {
                           type="text"
                           value={cell}
                           onChange={(e) => handleCellChange(i, j, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'ArrowDown' || e.key === 'Enter') {
+                              e.preventDefault();
+                              const nextInput = document.querySelector(`tr:nth-child(${i + 2}) td:nth-child(${j + 1}) input`) as HTMLInputElement;
+                              nextInput?.focus();
+                            } else if (e.key === 'ArrowUp') {
+                              e.preventDefault();
+                              const prevInput = document.querySelector(`tr:nth-child(${i}) td:nth-child(${j + 1}) input`) as HTMLInputElement;
+                              prevInput?.focus();
+                            } else if (e.key === 'ArrowRight') {
+                              e.preventDefault();
+                              const nextInput = document.querySelector(`tr:nth-child(${i + 1}) td:nth-child(${j + 2}) input`) as HTMLInputElement;
+                              nextInput?.focus();
+                            } else if (e.key === 'ArrowLeft') {
+                              e.preventDefault();
+                              const prevInput = document.querySelector(`tr:nth-child(${i + 1}) td:nth-child(${j}) input`) as HTMLInputElement;
+                              prevInput?.focus();
+                            }
+                          }}
                           className="w-full h-full p-3 bg-transparent outline-none min-w-[80px]"
                           placeholder={j === 0 ? "Sin código" : ""}
                         />
