@@ -13,7 +13,8 @@ const HEADERS = {
   HELIOS: ["Código", "Descripción", "Cantidad", "U. M."],
   MARHOTELES: ["Producto", "Descripción", "Unidad Medida", "Cantidad", "Precio", "Coste unitario", "Descuento", "Importe"],
   OLIVIA: ["Código", "Descripción", "Cantidad", "U. M."],
-  SERUNION: ["Código", "Descripción", "Cantidad", "Cant. Unidad", "U. M.", "Precio", "Importe"]
+  SERUNION: ["Código", "Descripción", "Cantidad", "Cant. Unidad", "U. M.", "Precio", "Importe"],
+  CLUBMARTHA: ["Producto", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Coste unitario", "Importe"]
 };
 
 // ================= MEMORIA DE CÓDIGOS =================
@@ -51,6 +52,7 @@ const DEFAULT_COPY_CFG = {
   cfgMAR: "Producto\nDescripción\nUnidad Medida\nCantidad\nPrecio\nImporte",
   cfgOLIVIA: "Código\nDescripción\nCantidad\nU. M.",
   cfgSERUNION: "Código\nDescripción\nCantidad\nCant. Unidad\nU. M.\nPrecio\nImporte",
+  cfgCLUBMARTHA: "Producto\nDescripción\nCód. proveedor\nCantidad\nU. M.\nPrecio\nImporte",
   includeHeader: true,
   strictCopy: true
 };
@@ -636,6 +638,45 @@ function parseSERUNION(line: string): ParseResult {
   return { ok: true, row: [code, desc, cant, cantUnidad, um, precio, importe], original };
 }
 
+// ================= CLUB MARTHA =================
+function looksLikeTrashCLUBMARTHA(line: string) {
+  return /^(BON ANY|B57954166|C\/ Cardenal|07007|Illes Balears|España|\d{9}|Pedido de compra|Entrega|CLUB MARTHA|Hotels & Resorts|B57817215|Parc de la Mar|07660|Producto\s+Descripción|Total pedido|\d+\s+de\s+\d+)/i.test(line);
+}
+
+function parseCLUBMARTHA(line: string): ParseResult {
+  const original = line;
+  line = normWS(line);
+  
+  const tailRegex = /\s+(\d+(?:,\d+)?)\s+([A-Za-z.]+)\s+(\d+(?:,\d+)?)\s+(\d+(?:,\d+)?)\s+(\d+(?:,\d+)?)$/;
+  const m = line.match(tailRegex);
+  if (!m) return { ok: false, original, reason: "No coincide con el formato de CLUB MARTHA" };
+  
+  const cantidad = stripDot00(m[1]);
+  const um = m[2];
+  const precio = m[3];
+  const coste = m[4];
+  const importe = m[5];
+  
+  const head = line.replace(tailRegex, "").trim();
+  const headMatch = head.match(/^(\d+)\s+(.*)$/);
+  if (!headMatch) return { ok: false, original, reason: "Falta código de producto o descripción" };
+  
+  const producto = headMatch[1];
+  let descAndProv = headMatch[2];
+  
+  let codProv = "";
+  const provMatch = descAndProv.match(/^(.*?)\s+(\d+)$/);
+  if (provMatch) {
+    descAndProv = provMatch[1];
+    codProv = provMatch[2];
+  }
+  
+  const desc = descAndProv;
+  if (!codProv) codProv = getSavedCode(desc);
+  
+  return { ok: true, row: [producto, desc, codProv, cantidad, um, precio, coste, importe], original };
+}
+
 // ================= JOIN BROKEN LINES =================
 function joinBrokenLines(lines: string[], fmt: string){
   const out: string[] = [];
@@ -653,6 +694,7 @@ function joinBrokenLines(lines: string[], fmt: string){
     if (fmt === "MARHOTELES" && looksLikeTrashMAR(t)) return "";
     if (fmt === "OLIVIA" && looksLikeTrashOLIVIA(t)) return "";
     if (fmt === "SERUNION" && looksLikeTrashSERUNION(t)) return "";
+    if (fmt === "CLUBMARTHA" && looksLikeTrashCLUBMARTHA(t)) return "";
     return t;
   }
 
@@ -713,6 +755,7 @@ function joinBrokenLines(lines: string[], fmt: string){
       (fmt === "MARHOTELES") ? (/^\d+\s+[A-Za-z]/.test(t0) || /\d+(,\d+)?\s+\d+(,\d+)?\s+\d+(,\d+)?\s+\d+(,\d+)?\s+\d+(,\d+)?$/.test(t0)) :
       (fmt === "OLIVIA") ? /\s\d+(?:[.,]\d+)?\s+[A-Za-z.]+\s*$/.test(t0) :
       (fmt === "SERUNION") ? /^\d{6}\s+/.test(t0) :
+      (fmt === "CLUBMARTHA") ? /^\d{6}\s+[A-Za-z]/.test(t0) :
       ( /^\d+\s+\d+\s+/.test(t0) || /^\d{9}\s+/.test(t0) || RE_FLA_TAIL.test(t0) );
 
     if (starter) out.push(t0);
@@ -734,6 +777,7 @@ function autoDetect(text: string){
   if (/Mar Hotels/i.test(text) || /\bCoste\s+unitario\s+Descuento\b/i.test(text)) return "MARHOTELES";
   if (/olivia hotelscollection/i.test(text) || /HOJA DE PEDIDO POR CENTRO/i.test(text)) return "OLIVIA";
   if (/SERUNION/i.test(text) || /spairal/i.test(text)) return "SERUNION";
+  if (/CLUB MARTHA/i.test(text) || /Hotels & Resorts Blue Sea/i.test(text)) return "CLUBMARTHA";
   if (/^\s*\d+\s+(?:.*\s+)?\d+\.\d{2}\s+[A-Za-z]+\s*$/m.test(text)) return "HELIOS";
   return "HM";
 }
@@ -754,6 +798,7 @@ function parseBy(fmt: string, mergedLines: string[]){
       (fmt === "MARHOTELES") ? parseMAR(line) :
       (fmt === "OLIVIA") ? parseOLIVIA(line) :
       (fmt === "SERUNION") ? parseSERUNION(line) :
+      (fmt === "CLUBMARTHA") ? parseCLUBMARTHA(line) :
       parseHM(line);
 
     if (p.ok) rows.push(p.row);
@@ -1028,7 +1073,8 @@ export default function App() {
                    parsedData.fmt === "HELIOS" ? "cfgHELIOS" : 
                    parsedData.fmt === "MARHOTELES" ? "cfgMAR" : 
                    parsedData.fmt === "OLIVIA" ? "cfgOLIVIA" : 
-                   parsedData.fmt === "SERUNION" ? "cfgSERUNION" : "cfgHM";
+                   parsedData.fmt === "SERUNION" ? "cfgSERUNION" : 
+                   parsedData.fmt === "CLUBMARTHA" ? "cfgCLUBMARTHA" : "cfgHM";
                    
     const rawWanted = config[fmtKey as keyof typeof config] as string;
     const wanted = rawWanted.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
@@ -1077,6 +1123,9 @@ export default function App() {
       } else if (["NIUUT", "H24"].includes(fmt)) {
         codeCol = 0;
         descCol = 2;
+      } else if (fmt === "CLUBMARTHA") {
+        codeCol = 2;
+        descCol = 1;
       }
       
       if (colIndex === codeCol && descCol !== -1) {
@@ -1136,6 +1185,7 @@ export default function App() {
               { id: 'MARHOTELES', label: 'MAR HOTELES' },
               { id: 'OLIVIA', label: 'BONANZA PLAYA' },
               { id: 'SERUNION', label: 'SERUNION' },
+              { id: 'CLUBMARTHA', label: 'CLUB MARTHA / MAC HOTEL' },
               { id: 'AUTO', label: 'Auto-detectar' },
             ].map(f => (
               <label key={f.id} className="flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors">
@@ -1187,6 +1237,7 @@ export default function App() {
                   { key: 'cfgMAR', title: 'MAR HOTELES' },
                   { key: 'cfgOLIVIA', title: 'BONANZA PLAYA' },
                   { key: 'cfgSERUNION', title: 'SERUNION' },
+                  { key: 'cfgCLUBMARTHA', title: 'CLUB MARTHA / MAC HOTEL' },
                 ].map(item => (
                   <div key={item.key} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
                     <h4 className="font-medium text-sm mb-2 text-gray-700">{item.title}</h4>
