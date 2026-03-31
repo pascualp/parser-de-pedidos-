@@ -14,7 +14,8 @@ const HEADERS = {
   MARHOTELES: ["Producto", "Descripción", "Unidad Medida", "Cantidad", "Precio", "Coste unitario", "Descuento", "Importe"],
   OLIVIA: ["Código", "Descripción", "Cantidad", "U. M."],
   SERUNION: ["Código", "Descripción", "Cantidad", "Cant. Unidad", "U. M.", "Precio", "Importe"],
-  CLUBMARTHA: ["Producto", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Coste unitario", "Importe"]
+  CLUBMARTHA: ["Producto", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Coste unitario", "Importe"],
+  CAPDEMAR: ["Código", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Precio 2", "Importe"]
 };
 
 // ================= MEMORIA DE CÓDIGOS =================
@@ -53,6 +54,7 @@ const DEFAULT_COPY_CFG = {
   cfgOLIVIA: "Código\nDescripción\nCantidad\nU. M.",
   cfgSERUNION: "Código\nDescripción\nCantidad\nCant. Unidad\nU. M.\nPrecio\nImporte",
   cfgCLUBMARTHA: "Producto\nDescripción\nCód. proveedor\nCantidad\nU. M.\nPrecio\nImporte",
+  cfgCAPDEMAR: "Código\nDescripción\nCód. proveedor\nCantidad\nU. M.\nPrecio\nImporte",
   includeHeader: true,
   strictCopy: true
 };
@@ -284,21 +286,24 @@ function parseBON(line: string): ParseResult {
 }
 
 // ================= NIU / UT =================
-const RE_NIU_REFP = /\b(\d+\|\d+)\b/;
-const RE_NIU_PRICE_ANY = /(\d+,\d{2})\s*(?:un\s*)?Precio\s+Unit\.\s+(\d+,\d{2})\s+(\d+,\d{2})/i;
+const RE_NIU_PRICE_LINE = /^(.*?)\s*(\d+(?:,\d+)?)\s*(?:(un)\s*)?Precio\s+Unit\.\s+(\d+(?:,\d+)?)\s+(\d+(?:,\d+)?)\s*$/i;
+const RE_NIU_REF_ONLY = /^(\d+)\s+(\d+\|\d+)(?:\s+(.*))?$/;
 const RE_NIU_UNIT_LINE = /^\s*(Kilogramos|Kilogramo|KG|Unidades|un|ud|ST)\s*$/i;
+
 function looksLikeTrashNIU(line: string){
   return /^(Ref Prov\.|Ref Cli\.|Descripción\b|Cdad\.\b|Concepto\b|Importe Total\b|Pedido\b|Emisor\b|Destinatario\b|Datos generales\b|Observaciones\b|Comentarios:|Contacto\b|Marca:|Unidad de Pedido:|Unidad de Facturacion:|Cdad a Facturar:|Periodo de entrega:|Divisa\b|Tipo Pedido\b|Fecha\b)/i.test(line)
     || /^\d+\s*\/\s*\d+\s*$/.test(line)
     || /^\d{6}$/.test(line)
     || /^Marca:\s*/i.test(line);
 }
+
 function normalizeNIUUnit(unitRaw: string){
   const u = (unitRaw || "").toLowerCase();
   if (u.startsWith("kilo") || u === "kg") return "KG";
   if (u === "un" || u === "ud" || u === "unidades" || u === "st") return "UD";
   return unitRaw ? unitRaw.toUpperCase() : "";
 }
+
 function parseNIUUT(lines: string[]){
   const rows: string[][] = [];
   const errors: {original: string, reason: string}[] = [];
@@ -315,33 +320,6 @@ function parseNIUUT(lines: string[]){
       currentItem = null; pendingPrice = null; pendingUnit = null; pendingDescLines = [];
     }
   }
-  function fail(msg: string, original?: string){
-    errors.push({ original: original ?? "(NIU/UT)", reason: msg });
-    currentItem = null; pendingPrice = null; pendingUnit = null; pendingDescLines = [];
-  }
-  function extractPrice(line: string){
-    const m = line.match(RE_NIU_PRICE_ANY);
-    if (!m) return null;
-    const unitInline = /\bun\b/i.test(line) ? "UD" : null;
-    return { qty: m[1], unitPrice: m[2], amount: m[3], unitInline };
-  }
-  function parseItem(line: string){
-    const mRefP = line.match(RE_NIU_REFP);
-    if (!mRefP) return null;
-    const refProv = mRefP[1];
-    const mCli = line.match(/^\s*(\d+)\b/);
-    if (!mCli) return null;
-    const refCli = mCli[1];
-
-    let desc = line.replace(/^\s*\d+\s+/, "");
-    desc = desc.replace(refProv, "").trim();
-    desc = normWS(desc);
-    if (pendingDescLines.length) {
-      const pre = normWS(pendingDescLines.join(" "));
-      if (pre) desc = normWS(pre + " " + desc);
-    }
-    return { refCli, refProv, desc };
-  }
 
   for (const raw of lines){
     let line = normWS(raw);
@@ -354,27 +332,41 @@ function parseNIUUT(lines: string[]){
       continue;
     }
 
-    if (/Precio\s+Unit\./i.test(line)) {
-      const p = extractPrice(line);
-      if (!p) { fail("Línea con 'Precio Unit.' no reconocida.", raw); continue; }
-      pendingPrice = p;
+    const mPrice = line.match(RE_NIU_PRICE_LINE);
+    if (mPrice) {
+      const prefix = mPrice[1].trim();
+      pendingPrice = {
+        qty: stripDot00(mPrice[2]),
+        unitInline: mPrice[3] ? "UD" : null,
+        unitPrice: mPrice[4],
+        amount: mPrice[5]
+      };
 
-      const itInline = parseItem(line);
-      if (itInline) {
-        if (!itInline.desc) { fail("Item NIU/UT detectado pero descripción vacía.", raw); continue; }
-        currentItem = itInline;
-        flushIfReady();
-      } else {
-        flushIfReady();
+      if (prefix) {
+        const mRef = prefix.match(RE_NIU_REF_ONLY);
+        if (mRef) {
+          let desc = mRef[3] || "";
+          if (pendingDescLines.length) {
+            desc = normWS(pendingDescLines.join(" ") + " " + desc);
+            pendingDescLines = [];
+          }
+          currentItem = { refCli: mRef[1], refProv: mRef[2], desc };
+        } else {
+          pendingDescLines.push(prefix);
+        }
       }
+      flushIfReady();
       continue;
     }
 
-    if (RE_NIU_REFP.test(line)) {
-      const it = parseItem(line);
-      if (!it) { pendingDescLines.push(line); continue; }
-      currentItem = it;
-      if (!currentItem.desc) { fail("Item NIU/UT sin descripción.", raw); continue; }
+    const mRefOnly = line.match(RE_NIU_REF_ONLY);
+    if (mRefOnly) {
+      let desc = mRefOnly[3] || "";
+      if (pendingDescLines.length) {
+        desc = normWS(pendingDescLines.join(" ") + " " + desc);
+        pendingDescLines = [];
+      }
+      currentItem = { refCli: mRefOnly[1], refProv: mRefOnly[2], desc };
       flushIfReady();
       continue;
     }
@@ -677,6 +669,67 @@ function parseCLUBMARTHA(line: string): ParseResult {
   return { ok: true, row: [producto, desc, codProv, cantidad, um, precio, coste, importe], original };
 }
 
+// ================= CAP DE MAR =================
+function looksLikeTrashCAPDEMAR(line: string) {
+  return /^(Cap de mar|Pedido|Total|Subtotal|IVA|Base|Fecha|Proveedor)/i.test(line);
+}
+
+function parseCAPDEMAR(lines: string[]) {
+  const rows: string[][] = [];
+  const errors: {original: string, reason: string}[] = [];
+
+  let pendingDesc: string[] = [];
+
+  for (const raw of lines) {
+    let line = normWS(raw);
+    if (!line) continue;
+    if (looksLikeTotalsOrFooter(line) || looksLikeTrashCommon(line) || looksLikeTrashCAPDEMAR(line)) continue;
+
+    const tailRegex = /\s+(\d+(?:,\d+)?)\s+([A-Za-z.]+)\s+(\d+(?:,\d+)?)\s+(\d+(?:,\d+)?)\s+(\d+(?:,\d+)?)$/;
+    const m = line.match(tailRegex);
+
+    if (m) {
+      const cantidad = m[1];
+      const um = m[2];
+      const precio = m[3];
+      const precio2 = m[4];
+      const importe = m[5];
+
+      const head = line.replace(tailRegex, "").trim();
+      const headTokens = head.split(" ");
+      
+      if (headTokens.length < 1) {
+        errors.push({ original: raw, reason: "Línea sin código" });
+        continue;
+      }
+      
+      const codigo = headTokens[0];
+      let codProv = "";
+      let inlineDesc = "";
+
+      if (headTokens.length > 1 && /^\d+$/.test(headTokens[headTokens.length - 1])) {
+        codProv = headTokens[headTokens.length - 1];
+        inlineDesc = headTokens.slice(1, headTokens.length - 1).join(" ");
+      } else {
+        inlineDesc = headTokens.slice(1).join(" ");
+      }
+      
+      const desc = normWS([...pendingDesc, inlineDesc].join(" "));
+      pendingDesc = [];
+      
+      rows.push([codigo, desc, codProv, cantidad, um, precio, precio2, importe]);
+    } else {
+      pendingDesc.push(line);
+    }
+  }
+
+  if (pendingDesc.length > 0) {
+    errors.push({ original: "(fin de texto)", reason: "Quedó texto sin procesar al final (CAP DE MAR)" });
+  }
+
+  return { rows, errors };
+}
+
 // ================= JOIN BROKEN LINES =================
 function joinBrokenLines(lines: string[], fmt: string){
   const out: string[] = [];
@@ -695,6 +748,7 @@ function joinBrokenLines(lines: string[], fmt: string){
     if (fmt === "OLIVIA" && looksLikeTrashOLIVIA(t)) return "";
     if (fmt === "SERUNION" && looksLikeTrashSERUNION(t)) return "";
     if (fmt === "CLUBMARTHA" && looksLikeTrashCLUBMARTHA(t)) return "";
+    if (fmt === "CAPDEMAR" && looksLikeTrashCAPDEMAR(t)) return "";
     return t;
   }
 
@@ -730,7 +784,7 @@ function joinBrokenLines(lines: string[], fmt: string){
     return out;
   }
 
-  if (fmt === "NIUUT" || fmt === "H24") {
+  if (fmt === "NIUUT" || fmt === "H24" || fmt === "CAPDEMAR") {
     for (const raw0 of lines) {
       const t = clean(raw0);
       if (!t) continue;
@@ -778,6 +832,7 @@ function autoDetect(text: string){
   if (/olivia hotelscollection/i.test(text) || /HOJA DE PEDIDO POR CENTRO/i.test(text)) return "OLIVIA";
   if (/SERUNION/i.test(text) || /spairal/i.test(text)) return "SERUNION";
   if (/CLUB MARTHA/i.test(text) || /Hotels & Resorts Blue Sea/i.test(text)) return "CLUBMARTHA";
+  if (/cap de mar/i.test(text)) return "CAPDEMAR";
   if (/^\s*\d+\s+(?:.*\s+)?\d+\.\d{2}\s+[A-Za-z]+\s*$/m.test(text)) return "HELIOS";
   return "HM";
 }
@@ -785,6 +840,7 @@ function autoDetect(text: string){
 function parseBy(fmt: string, mergedLines: string[]){
   if (fmt === "NIUUT") return parseNIUUT(mergedLines);
   if (fmt === "H24") return parseH24(mergedLines);
+  if (fmt === "CAPDEMAR") return parseCAPDEMAR(mergedLines);
 
   const rows: string[][] = [];
   const errors: {original: string, reason: string}[] = [];
@@ -1074,7 +1130,8 @@ export default function App() {
                    parsedData.fmt === "MARHOTELES" ? "cfgMAR" : 
                    parsedData.fmt === "OLIVIA" ? "cfgOLIVIA" : 
                    parsedData.fmt === "SERUNION" ? "cfgSERUNION" : 
-                   parsedData.fmt === "CLUBMARTHA" ? "cfgCLUBMARTHA" : "cfgHM";
+                   parsedData.fmt === "CLUBMARTHA" ? "cfgCLUBMARTHA" : 
+                   parsedData.fmt === "CAPDEMAR" ? "cfgCAPDEMAR" : "cfgHM";
                    
     const rawWanted = config[fmtKey as keyof typeof config] as string;
     const wanted = rawWanted.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
@@ -1117,7 +1174,7 @@ export default function App() {
       let codeCol = -1;
       let descCol = -1;
       
-      if (["HM", "AMADIP", "CARIBBEAN", "FLAMINGO", "HELIOS", "MARHOTELES", "OLIVIA", "SERUNION"].includes(fmt)) {
+      if (["HM", "AMADIP", "CARIBBEAN", "FLAMINGO", "HELIOS", "MARHOTELES", "OLIVIA", "SERUNION", "CAPDEMAR"].includes(fmt)) {
         codeCol = 0;
         descCol = 1;
       } else if (["NIUUT", "H24"].includes(fmt)) {
@@ -1186,6 +1243,7 @@ export default function App() {
               { id: 'OLIVIA', label: 'BONANZA PLAYA' },
               { id: 'SERUNION', label: 'SERUNION' },
               { id: 'CLUBMARTHA', label: 'CLUB MARTHA / MAC HOTEL' },
+              { id: 'CAPDEMAR', label: 'CAP DE MAR' },
               { id: 'AUTO', label: 'Auto-detectar' },
             ].map(f => (
               <label key={f.id} className="flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors">
@@ -1238,6 +1296,7 @@ export default function App() {
                   { key: 'cfgOLIVIA', title: 'BONANZA PLAYA' },
                   { key: 'cfgSERUNION', title: 'SERUNION' },
                   { key: 'cfgCLUBMARTHA', title: 'CLUB MARTHA / MAC HOTEL' },
+                  { key: 'cfgCAPDEMAR', title: 'CAP DE MAR' },
                 ].map(item => (
                   <div key={item.key} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
                     <h4 className="font-medium text-sm mb-2 text-gray-700">{item.title}</h4>
