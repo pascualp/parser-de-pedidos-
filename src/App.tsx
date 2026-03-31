@@ -15,7 +15,8 @@ const HEADERS = {
   OLIVIA: ["Código", "Descripción", "Cantidad", "U. M."],
   SERUNION: ["Código", "Descripción", "Cantidad", "Cant. Unidad", "U. M.", "Precio", "Importe"],
   CLUBMARTHA: ["Producto", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Coste unitario", "Importe"],
-  CAPDEMAR: ["Código", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Precio 2", "Importe"]
+  CAPDEMAR: ["Código", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Precio 2", "Importe"],
+  GARONDA: ["Producto", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Coste unitario", "Importe"]
 };
 
 // ================= MEMORIA DE CÓDIGOS =================
@@ -47,6 +48,7 @@ const DEFAULT_COPY_CFG = {
   cfgCAR: "Producto\nDescripción\nCantidad\nU. M.",
   cfgFLA: "Código\nDescripción\nCant.",
   cfgBON: "Descripción\nUnidades\nUnid. medida",
+  cfgGARONDA: "Producto\nDescripción\nCód. proveedor\nCantidad\nU. M.\nPrecio\nCoste unitario\nImporte",
   cfgNIU: "Ref Cli.\nDescripción\nCantidad\nU. M.",
   cfgH24: "Código\nDescripción\nCantidad\nU. M.",
   cfgHELIOS: "Código\nDescripción\nCantidad\nU. M.",
@@ -55,6 +57,7 @@ const DEFAULT_COPY_CFG = {
   cfgSERUNION: "Código\nDescripción\nCantidad\nCant. Unidad\nU. M.\nPrecio\nImporte",
   cfgCLUBMARTHA: "Producto\nDescripción\nCód. proveedor\nCantidad\nU. M.\nPrecio\nImporte",
   cfgCAPDEMAR: "Código\nDescripción\nCód. proveedor\nCantidad\nU. M.\nPrecio\nImporte",
+  cfgBIOEN: "Código\nDescripción\nCód. proveedor\nCantidad\nU. M.\nPrecio\nCoste\nImporte",
   includeHeader: true,
   strictCopy: true
 };
@@ -72,11 +75,88 @@ function looksLikeTotalsOrFooter(line: string){
   return /Subtotal|Base Imponible|Importe Total|Euros|Base imponible|IVA total|Total pedido|HOJA DE PEDIDO|DESCRIPCION|Depto\./i.test(line);
 }
 function looksLikeTrashCommon(line: string){
-  return /^(Pedido\b|^\d+\s*\/\s*\d+\s*$)/i.test(line);
+  return /^(Pedido\b|^\d+\s*\/\s*\d+\s*$|^\d+\s+de\s+\d+$)/i.test(line);
 }
 function normWS(s: string){ return (s ?? "").replace(/\s+/g, " ").trim(); }
 
 type ParseResult = { ok: true, row: string[], original: string } | { ok: false, reason: string, original: string };
+
+// ================= BIOEN =================
+function looksLikeTrashBIOEN(line: string) {
+  return /^(Producto\s+Descripción|Coste|Cód\.\s+proveedor|bioen)/i.test(line);
+}
+
+function parseBIOEN(line: string): ParseResult {
+  const original = line;
+  line = normWS(line);
+  
+  const headMatch = line.match(/^(\S+)\s+(.+)$/);
+  if (!headMatch) return { ok: false, original, reason: "No se pudo extraer el código" };
+  
+  const codigo = headMatch[1];
+  const rest = headMatch[2];
+  
+  const tailRegex = /\s+(\d+(?:\.\d+)?)\s+((?:[A-Za-z]|\d+[A-Za-z]).*?)\s+(\S+)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)$/;
+  const m2 = rest.match(tailRegex);
+  
+  if (!m2) return { ok: false, original, reason: "No coincide con el formato de BIOEN" };
+  
+  let descAndProv = rest.replace(tailRegex, "").trim();
+  let codProv = "";
+  const provMatch = descAndProv.match(/^(.*?)\s+(\d+)$/);
+  if (provMatch) {
+    descAndProv = provMatch[1];
+    codProv = provMatch[2];
+  }
+  
+  const cantidad = m2[1];
+  const um = m2[2];
+  const precio = m2[3].replace(/[^\d.,]/g, ''); // Clean up OCR errors like UNID1A.D55000
+  const coste = m2[4];
+  const importe = m2[5];
+  
+  return { ok: true, row: [codigo, descAndProv, codProv, cantidad, um, precio, coste, importe], original };
+}
+
+// ================= GARONDA =================
+function looksLikeTrashGARONDA(line: string) {
+  return /^(GARONDA|Pedido|Total|Subtotal|IVA|Base|Fecha|Proveedor|P[áa]gina|Albar[áa]n|Factura|Cliente|Direcci[óo]n|Tel[ée]fono|Email|NIF|CIF|Observaciones|Comentarios)/i.test(line);
+}
+
+function parseGARONDA(line: string): ParseResult {
+  const original = line;
+  line = normWS(line);
+  
+  // Fix OCR errors like KIL1O.50000 -> KILO 1.50000
+  line = line.replace(/([A-Za-z]+)1([A-Za-z]*)\.([0-9]+)/, "$1O$2 1.$3");
+  
+  const headMatch = line.match(/^(\S+)\s+(.+)$/);
+  if (!headMatch) return { ok: false, original, reason: "No se pudo extraer el código" };
+  
+  const codigo = headMatch[1];
+  const rest = headMatch[2];
+  
+  const tailRegex = /\s+(\d+(?:\.\d+)?)\s+((?:[A-Za-z]|\d+[A-Za-z]).*?)\s+(\S+)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)$/;
+  const m2 = rest.match(tailRegex);
+  
+  if (!m2) return { ok: false, original, reason: "No coincide con el formato de GARONDA" };
+  
+  let descAndProv = rest.replace(tailRegex, "").trim();
+  let codProv = "";
+  const provMatch = descAndProv.match(/^(.*?)\s+(\d+)$/);
+  if (provMatch) {
+    descAndProv = provMatch[1];
+    codProv = provMatch[2];
+  }
+  
+  const cantidad = m2[1].replace(/\.00$/, "");
+  const um = m2[2];
+  const precio = m2[3].replace(/\.00$/, "");
+  const coste = m2[4].replace(/\.00$/, "");
+  const importe = m2[5].replace(/\.00$/, "");
+  
+  return { ok: true, row: [codigo, descAndProv, codProv, cantidad, um, precio, coste, importe], original };
+}
 
 // ================= HM =================
 function looksLikeTrashHM(line: string) {
@@ -632,14 +712,14 @@ function parseSERUNION(line: string): ParseResult {
 
 // ================= CLUB MARTHA =================
 function looksLikeTrashCLUBMARTHA(line: string) {
-  return /^(BON ANY|B57954166|C\/ Cardenal|07007|Illes Balears|España|\d{9}|Pedido de compra|Entrega|CLUB MARTHA|Hotels & Resorts|B57817215|Parc de la Mar|07660|Producto\s+Descripción|Total pedido|\d+\s+de\s+\d+)/i.test(line);
+  return /^(BON ANY|B57954166|C\/ Cardenal|07007|Illes Balears|España|Pedido de compra|Entrega|CLUB MARTHA|Hotels & Resorts|B57817215|Parc de la Mar|07660|Producto\s+Descripción|Total pedido|\d+\s+de\s+\d+|es club mac)/i.test(line);
 }
 
 function parseCLUBMARTHA(line: string): ParseResult {
   const original = line;
   line = normWS(line);
   
-  const tailRegex = /\s+(\d+(?:,\d+)?)\s+([A-Za-z.]+)\s+(\d+(?:,\d+)?)\s+(\d+(?:,\d+)?)\s+(\d+(?:,\d+)?)$/;
+  const tailRegex = /\s+(\d+(?:[.,]\d+)?)\s+((?:[A-Za-z]|\d+[A-Za-z]).*?)\s+(\S+)\s+(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)$/;
   const m = line.match(tailRegex);
   if (!m) return { ok: false, original, reason: "No coincide con el formato de CLUB MARTHA" };
   
@@ -671,7 +751,7 @@ function parseCLUBMARTHA(line: string): ParseResult {
 
 // ================= CAP DE MAR =================
 function looksLikeTrashCAPDEMAR(line: string) {
-  return /^(Cap de mar|Pedido|Total|Subtotal|IVA|Base|Fecha|Proveedor)/i.test(line);
+  return /^(Cap de mar|Pedido|Total|Subtotal|IVA|Base|Fecha|Proveedor|P[áa]gina|Albar[áa]n|Factura|Cliente|Direcci[óo]n|Tel[ée]fono|Email|NIF|CIF|Observaciones|Comentarios)/i.test(line);
 }
 
 function parseCAPDEMAR(lines: string[]) {
@@ -685,7 +765,7 @@ function parseCAPDEMAR(lines: string[]) {
     if (!line) continue;
     if (looksLikeTotalsOrFooter(line) || looksLikeTrashCommon(line) || looksLikeTrashCAPDEMAR(line)) continue;
 
-    const tailRegex = /\s+(\d+(?:,\d+)?)\s+([A-Za-z.]+)\s+(\d+(?:,\d+)?)\s+(\d+(?:,\d+)?)\s+(\d+(?:,\d+)?)$/;
+    const tailRegex = /(?:\s+|^)(\d+(?:[.,]\d+)?)\s+([A-Za-z.\/]+)\s+(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)$/;
     const m = line.match(tailRegex);
 
     if (m) {
@@ -696,22 +776,37 @@ function parseCAPDEMAR(lines: string[]) {
       const importe = m[5];
 
       const head = line.replace(tailRegex, "").trim();
-      const headTokens = head.split(" ");
+      let headTokens = head ? head.split(" ") : [];
       
-      if (headTokens.length < 1) {
-        errors.push({ original: raw, reason: "Línea sin código" });
-        continue;
-      }
-      
-      const codigo = headTokens[0];
+      let codigo = "";
       let codProv = "";
       let inlineDesc = "";
 
-      if (headTokens.length > 1 && /^\d+$/.test(headTokens[headTokens.length - 1])) {
-        codProv = headTokens[headTokens.length - 1];
-        inlineDesc = headTokens.slice(1, headTokens.length - 1).join(" ");
+      if (headTokens.length === 0) {
+        // The head is entirely in pendingDesc
+        if (pendingDesc.length > 0) {
+          const fullPending = pendingDesc.join(" ").trim();
+          const pendingTokens = fullPending.split(" ");
+          codigo = pendingTokens[0];
+          if (pendingTokens.length > 1 && /^\d+$/.test(pendingTokens[pendingTokens.length - 1])) {
+            codProv = pendingTokens[pendingTokens.length - 1];
+            inlineDesc = pendingTokens.slice(1, pendingTokens.length - 1).join(" ");
+          } else {
+            inlineDesc = pendingTokens.slice(1).join(" ");
+          }
+          pendingDesc = [];
+        } else {
+          errors.push({ original: raw, reason: "Línea sin código ni descripción previa" });
+          continue;
+        }
       } else {
-        inlineDesc = headTokens.slice(1).join(" ");
+        codigo = headTokens[0];
+        if (headTokens.length > 1 && /^\d+$/.test(headTokens[headTokens.length - 1])) {
+          codProv = headTokens[headTokens.length - 1];
+          inlineDesc = headTokens.slice(1, headTokens.length - 1).join(" ");
+        } else {
+          inlineDesc = headTokens.slice(1).join(" ");
+        }
       }
       
       const desc = normWS([...pendingDesc, inlineDesc].join(" "));
@@ -724,7 +819,7 @@ function parseCAPDEMAR(lines: string[]) {
   }
 
   if (pendingDesc.length > 0) {
-    errors.push({ original: "(fin de texto)", reason: "Quedó texto sin procesar al final (CAP DE MAR)" });
+    errors.push({ original: "(fin de texto)", reason: "Quedó texto sin procesar al final (CAP DE MAR): " + pendingDesc.join(" | ") });
   }
 
   return { rows, errors };
@@ -749,6 +844,7 @@ function joinBrokenLines(lines: string[], fmt: string){
     if (fmt === "SERUNION" && looksLikeTrashSERUNION(t)) return "";
     if (fmt === "CLUBMARTHA" && looksLikeTrashCLUBMARTHA(t)) return "";
     if (fmt === "CAPDEMAR" && looksLikeTrashCAPDEMAR(t)) return "";
+    if (fmt === "GARONDA" && looksLikeTrashGARONDA(t)) return "";
     return t;
   }
 
@@ -784,7 +880,7 @@ function joinBrokenLines(lines: string[], fmt: string){
     return out;
   }
 
-  if (fmt === "NIUUT" || fmt === "H24" || fmt === "CAPDEMAR") {
+  if (fmt === "NIUUT" || fmt === "H24" || fmt === "CAPDEMAR" || fmt === "BIOEN" || fmt === "GARONDA") {
     for (const raw0 of lines) {
       const t = clean(raw0);
       if (!t) continue;
@@ -809,7 +905,7 @@ function joinBrokenLines(lines: string[], fmt: string){
       (fmt === "MARHOTELES") ? (/^\d+\s+[A-Za-z]/.test(t0) || /\d+(,\d+)?\s+\d+(,\d+)?\s+\d+(,\d+)?\s+\d+(,\d+)?\s+\d+(,\d+)?$/.test(t0)) :
       (fmt === "OLIVIA") ? /\s\d+(?:[.,]\d+)?\s+[A-Za-z.]+\s*$/.test(t0) :
       (fmt === "SERUNION") ? /^\d{6}\s+/.test(t0) :
-      (fmt === "CLUBMARTHA") ? /^\d{6}\s+[A-Za-z]/.test(t0) :
+      (fmt === "CLUBMARTHA") ? /^\d+\s+[A-Za-z]/.test(t0) :
       ( /^\d+\s+\d+\s+/.test(t0) || /^\d{9}\s+/.test(t0) || RE_FLA_TAIL.test(t0) );
 
     if (starter) out.push(t0);
@@ -831,8 +927,16 @@ function autoDetect(text: string){
   if (/Mar Hotels/i.test(text) || /\bCoste\s+unitario\s+Descuento\b/i.test(text)) return "MARHOTELES";
   if (/olivia hotelscollection/i.test(text) || /HOJA DE PEDIDO POR CENTRO/i.test(text)) return "OLIVIA";
   if (/SERUNION/i.test(text) || /spairal/i.test(text)) return "SERUNION";
-  if (/CLUB MARTHA/i.test(text) || /Hotels & Resorts Blue Sea/i.test(text)) return "CLUBMARTHA";
+  if (/CLUB MARTHA/i.test(text) || /Hotels & Resorts Blue Sea/i.test(text) || /club mac/i.test(text) || /^\s*\d+\s+.*\s+\d+(?:[.,]\d+)?\s+(?:[A-Za-z]+|BDJ\s+\d+\s+UNIDAD|BDJ\s+\d+GR\s+\d+\s+UNID1A\.D55000|MJO\s+\d+\s+UNIDAD)\s+\d+(?:[.,]\d{5})\s+\d+(?:[.,]\d{5})\s+\d+(?:[.,]\d{2})\s*$/m.test(text)) return "CLUBMARTHA";
   if (/cap de mar/i.test(text)) return "CAPDEMAR";
+  if (/bioen/i.test(text)) return "BIOEN";
+  if (/garonda/i.test(text)) return "GARONDA";
+  if (/^\s*\d{9}\s+[A-Za-z]/.test(lines[0]) && /\s+\d+(?:\.\d+)?\s+[A-Za-z]+\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?$/.test(lines[0])) {
+    return "GARONDA";
+  }
+  if (/^\s*\d{7}\s+[A-Za-z]/.test(lines[0]) && /\s+\d+(?:\.\d+)?\s+[A-Za-z]+\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?$/.test(lines[0])) {
+    return "BIOEN";
+  }
   if (/^\s*\d+\s+(?:.*\s+)?\d+\.\d{2}\s+[A-Za-z]+\s*$/m.test(text)) return "HELIOS";
   return "HM";
 }
@@ -855,6 +959,8 @@ function parseBy(fmt: string, mergedLines: string[]){
       (fmt === "OLIVIA") ? parseOLIVIA(line) :
       (fmt === "SERUNION") ? parseSERUNION(line) :
       (fmt === "CLUBMARTHA") ? parseCLUBMARTHA(line) :
+      (fmt === "BIOEN") ? parseBIOEN(line) :
+      (fmt === "GARONDA") ? parseGARONDA(line) :
       parseHM(line);
 
     if (p.ok) rows.push(p.row);
@@ -1095,7 +1201,7 @@ export default function App() {
 
     setParsedData({ headers, rows, errors, fmt });
 
-    if (!rows.length) {
+    if (!rows.length && !errors.length) {
       setStatus({ msg: "No se pudo parsear nada.", type: "err" });
     } else if (errors.length) {
       setStatus({ msg: `${fmt}: ${rows.length} filas válidas, ${errors.length} con error.`, type: "warn" });
@@ -1105,18 +1211,18 @@ export default function App() {
   };
 
   const handleCopyFull = async () => {
-    if (!parsedData || parsedData.errors.length) {
-      setStatus({ msg: "No se puede copiar: hay errores.", type: "err" });
+    if (!parsedData || parsedData.rows.length === 0) {
+      setStatus({ msg: "No hay datos válidos para copiar.", type: "err" });
       return;
     }
     const text = [parsedData.headers.join("\t"), ...parsedData.rows.map(r => r.join("\t"))].join("\n");
     await navigator.clipboard.writeText(text);
-    setStatus({ msg: `Copiado completo (${parsedData.rows.length} filas).`, type: "ok" });
+    setStatus({ msg: `Copiado completo (${parsedData.rows.length} filas válidas).`, type: "ok" });
   };
 
   const handleCopyCustom = async () => {
-    if (!parsedData || parsedData.errors.length) {
-      setStatus({ msg: "No se puede copiar: hay errores.", type: "err" });
+    if (!parsedData || parsedData.rows.length === 0) {
+      setStatus({ msg: "No hay datos válidos para copiar.", type: "err" });
       return;
     }
     
@@ -1131,6 +1237,8 @@ export default function App() {
                    parsedData.fmt === "OLIVIA" ? "cfgOLIVIA" : 
                    parsedData.fmt === "SERUNION" ? "cfgSERUNION" : 
                    parsedData.fmt === "CLUBMARTHA" ? "cfgCLUBMARTHA" : 
+                   parsedData.fmt === "BIOEN" ? "cfgBIOEN" : 
+                   parsedData.fmt === "GARONDA" ? "cfgGARONDA" : 
                    parsedData.fmt === "CAPDEMAR" ? "cfgCAPDEMAR" : "cfgHM";
                    
     const rawWanted = config[fmtKey as keyof typeof config] as string;
@@ -1154,7 +1262,7 @@ export default function App() {
         : outRows.map(r => r.join("\t")).join("\n");
 
     await navigator.clipboard.writeText(out);
-    setStatus({ msg: `Copiado personalizado (${parsedData.rows.length} filas).`, type: "ok" });
+    setStatus({ msg: `Copiado personalizado (${parsedData.rows.length} filas válidas).`, type: "ok" });
   };
 
   const handleClear = () => {
@@ -1242,8 +1350,10 @@ export default function App() {
               { id: 'MARHOTELES', label: 'MAR HOTELES' },
               { id: 'OLIVIA', label: 'BONANZA PLAYA' },
               { id: 'SERUNION', label: 'SERUNION' },
-              { id: 'CLUBMARTHA', label: 'CLUB MARTHA / MAC HOTEL' },
+              { id: 'CLUBMARTHA', label: 'CLUB MARTHA / MAC HOTEL / CLUB MAC' },
               { id: 'CAPDEMAR', label: 'CAP DE MAR' },
+              { id: 'BIOEN', label: 'BIOEN' },
+              { id: 'GARONDA', label: 'GARONDA' },
               { id: 'AUTO', label: 'Auto-detectar' },
             ].map(f => (
               <label key={f.id} className="flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors">
@@ -1295,8 +1405,10 @@ export default function App() {
                   { key: 'cfgMAR', title: 'MAR HOTELES' },
                   { key: 'cfgOLIVIA', title: 'BONANZA PLAYA' },
                   { key: 'cfgSERUNION', title: 'SERUNION' },
-                  { key: 'cfgCLUBMARTHA', title: 'CLUB MARTHA / MAC HOTEL' },
+                  { key: 'cfgCLUBMARTHA', title: 'CLUB MARTHA / MAC HOTEL / CLUB MAC' },
                   { key: 'cfgCAPDEMAR', title: 'CAP DE MAR' },
+                  { key: 'cfgBIOEN', title: 'BIOEN' },
+                  { key: 'cfgGARONDA', title: 'GARONDA' },
                 ].map(item => (
                   <div key={item.key} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
                     <h4 className="font-medium text-sm mb-2 text-gray-700">{item.title}</h4>
@@ -1358,7 +1470,7 @@ export default function App() {
             </button>
             <button 
               onClick={handleCopyFull}
-              disabled={!parsedData || parsedData.errors.length > 0}
+              disabled={!parsedData}
               className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
             >
               <Copy className="w-4 h-4" />
@@ -1366,7 +1478,7 @@ export default function App() {
             </button>
             <button 
               onClick={handleCopyCustom}
-              disabled={!parsedData || parsedData.errors.length > 0}
+              disabled={!parsedData}
               className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 text-white font-medium rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
             >
               <Copy className="w-4 h-4" />
