@@ -1382,6 +1382,15 @@ export default function App() {
       } else if (fmt === "CLUBMARTHA") {
         codeCol = 2;
         descCol = 1;
+      } else if (fmt === "LAGARDERE") {
+        codeCol = 1;
+        descCol = 2;
+      } else if (fmt === "GARONDA" || fmt === "BIOEN") {
+        codeCol = 2;
+        descCol = 1;
+      } else if (fmt === "FRUTAS") {
+        codeCol = 2;
+        descCol = 0;
       }
       
       if (colIndex === codeCol && descCol !== -1) {
