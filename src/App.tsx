@@ -16,7 +16,9 @@ const HEADERS = {
   SERUNION: ["Código", "Descripción", "Cantidad", "Cant. Unidad", "U. M.", "Precio", "Importe"],
   CLUBMARTHA: ["Producto", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Coste unitario", "Importe"],
   CAPDEMAR: ["Código", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Precio 2", "Importe"],
-  GARONDA: ["Producto", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Coste unitario", "Importe"]
+  GARONDA: ["Producto", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Coste unitario", "Importe"],
+  FRUTAS: ["Descripción", "Cód. Prov.", "Código", "Cantidad", "Unidad"],
+  LAGARDERE: ["EAN", "Código", "Descripción", "Cantidad", "Unidad"]
 };
 
 // ================= MEMORIA DE CÓDIGOS =================
@@ -49,6 +51,7 @@ const DEFAULT_COPY_CFG = {
   cfgFLA: "Código\nDescripción\nCant.",
   cfgBON: "Descripción\nUnidades\nUnid. medida",
   cfgGARONDA: "Producto\nDescripción\nCód. proveedor\nCantidad\nU. M.\nPrecio\nCoste unitario\nImporte",
+  cfgFRUTAS: "Descripción\nCód. Prov.\nCódigo\nCantidad\nUnidad",
   cfgNIU: "Ref Cli.\nDescripción\nCantidad\nU. M.",
   cfgH24: "Código\nDescripción\nCantidad\nU. M.",
   cfgHELIOS: "Código\nDescripción\nCantidad\nU. M.",
@@ -58,6 +61,7 @@ const DEFAULT_COPY_CFG = {
   cfgCLUBMARTHA: "Producto\nDescripción\nCód. proveedor\nCantidad\nU. M.\nPrecio\nImporte",
   cfgCAPDEMAR: "Código\nDescripción\nCód. proveedor\nCantidad\nU. M.\nPrecio\nImporte",
   cfgBIOEN: "Código\nDescripción\nCód. proveedor\nCantidad\nU. M.\nPrecio\nCoste\nImporte",
+  cfgLAGARDERE: "EAN\nCódigo\nDescripción\nCantidad\nUnidad",
   includeHeader: true,
   strictCopy: true
 };
@@ -156,6 +160,86 @@ function parseGARONDA(line: string): ParseResult {
   const importe = m2[5].replace(/\.00$/, "");
   
   return { ok: true, row: [codigo, descAndProv, codProv, cantidad, um, precio, coste, importe], original };
+}
+
+function parseFRUTAS(line: string): ParseResult {
+  const original = line;
+  const cleanLine = line.trim();
+  if (!cleanLine) return { ok: false, original, reason: "Línea vacía" };
+
+  // Try to find the quantity and unit at the end
+  const qUnitMatch = cleanLine.match(/(\d+(?:[.,]\d+)?)\s+([A-Za-zÁÉÍÓÚÜÑ.]{1,15})$/);
+  if (!qUnitMatch) return { ok: false, original, reason: "No se encontró cantidad y unidad al final" };
+
+  const cantidad = qUnitMatch[1];
+  const unidad = qUnitMatch[2];
+  
+  const restOfLine = cleanLine.substring(0, cleanLine.length - qUnitMatch[0].length).trim();
+  const parts = restOfLine.split(/\t+|\s{2,}/).map(p => p.trim()).filter(p => p.length > 0);
+  
+  let descripcion = restOfLine;
+  let codProv = "";
+  let codigo = "";
+  
+  // 1. Extract Provider Reference from parentheses (00182)
+  const allCodesInParens = restOfLine.match(/\((\d+)\)/g);
+  if (allCodesInParens) {
+      const lastMatch = allCodesInParens[allCodesInParens.length - 1];
+      const codeMatch = lastMatch.match(/\((\d+)\)/);
+      if (codeMatch) {
+          codProv = codeMatch[1];
+          // Remove the parentheses code from the description
+          descripcion = descripcion.replace(lastMatch, "").trim();
+      }
+  }
+  
+  // 2. Extract the "Código" (the number that follows or is in the middle column)
+  // Re-split the cleaned description to find the middle column
+  const cleanParts = descripcion.split(/\t+|\s{2,}/).map(p => p.trim()).filter(p => p.length > 0);
+  if (cleanParts.length >= 2) {
+      const lastPart = cleanParts[cleanParts.length - 1];
+      if (/^\d+$/.test(lastPart)) {
+          codigo = lastPart;
+          descripcion = cleanParts.slice(0, -1).join(" ").trim();
+      }
+  } else if (cleanParts.length === 1 && !codigo) {
+      // If only one part left, it might be the description itself
+      descripcion = cleanParts[0];
+  }
+
+  if (!descripcion) return { ok: false, original, reason: "No se pudo extraer la descripción" };
+
+  return { ok: true, row: [descripcion, codProv, codigo, cantidad, unidad], original };
+}
+
+function parseLAGARDERE(line: string): ParseResult {
+  const original = line;
+  const cleanLine = line.trim();
+  if (!cleanLine) return { ok: false, original, reason: "Línea vacía" };
+
+  // Sample: 1000004802173 480217 CHAMPIÑON LAMINADO BANDEJA 250G 20 UN
+  // Sample: 1000004040834 404083 LIMON MALLORCA 15,000 KG
+  
+  // Try to find quantity and unit at the end
+  const qUnitMatch = cleanLine.match(/(\d+(?:[.,]\d+)?)\s+([A-Za-zÁÉÍÓÚÜÑ.]{1,15})$/);
+  if (!qUnitMatch) return { ok: false, original, reason: "No se encontró cantidad y unidad al final" };
+
+  const cantidad = qUnitMatch[1];
+  const unidad = qUnitMatch[2];
+  
+  const restOfLine = cleanLine.substring(0, cleanLine.length - qUnitMatch[0].length).trim();
+  
+  // Split by spaces
+  const parts = restOfLine.split(/\s+/);
+  if (parts.length < 3) return { ok: false, original, reason: "Formato Lagardere inválido" };
+  
+  const ean = parts[0];
+  const shortCode = parts[1];
+  const descripcion = parts.slice(2).join(" ");
+  const savedCode = getSavedCode(descripcion);
+  const finalCode = savedCode || shortCode;
+
+  return { ok: true, row: [ean, finalCode, descripcion, cantidad, unidad], original };
 }
 
 // ================= HM =================
@@ -880,7 +964,7 @@ function joinBrokenLines(lines: string[], fmt: string){
     return out;
   }
 
-  if (fmt === "NIUUT" || fmt === "H24" || fmt === "CAPDEMAR" || fmt === "BIOEN" || fmt === "GARONDA") {
+  if (fmt === "NIUUT" || fmt === "H24" || fmt === "CAPDEMAR" || fmt === "BIOEN" || fmt === "GARONDA" || fmt === "LAGARDERE") {
     for (const raw0 of lines) {
       const t = clean(raw0);
       if (!t) continue;
@@ -906,6 +990,8 @@ function joinBrokenLines(lines: string[], fmt: string){
       (fmt === "OLIVIA") ? /\s\d+(?:[.,]\d+)?\s+[A-Za-z.]+\s*$/.test(t0) :
       (fmt === "SERUNION") ? /^\d{6}\s+/.test(t0) :
       (fmt === "CLUBMARTHA") ? /^\d+\s+[A-Za-z]/.test(t0) :
+      (fmt === "FRUTAS") ? true :
+      (fmt === "LAGARDERE") ? /^\d{13}\s+\d{6}\s+/.test(t0) :
       ( /^\d+\s+\d+\s+/.test(t0) || /^\d{9}\s+/.test(t0) || RE_FLA_TAIL.test(t0) );
 
     if (starter) out.push(t0);
@@ -930,6 +1016,8 @@ function autoDetect(text: string){
   if (/CLUB MARTHA/i.test(text) || /Hotels & Resorts Blue Sea/i.test(text) || /club mac/i.test(text) || /^\s*\d+\s+.*\s+\d+(?:[.,]\d+)?\s+(?:[A-Za-z]+|BDJ\s+\d+\s+UNIDAD|BDJ\s+\d+GR\s+\d+\s+UNID1A\.D55000|MJO\s+\d+\s+UNIDAD)\s+\d+(?:[.,]\d{5})\s+\d+(?:[.,]\d{5})\s+\d+(?:[.,]\d{2})\s*$/m.test(text)) return "CLUBMARTHA";
   if (/cap de mar/i.test(text)) return "CAPDEMAR";
   if (/bioen/i.test(text)) return "BIOEN";
+  if (/^\s*\d{13}\s+\d{6}\s+/m.test(text)) return "LAGARDERE";
+  if (/\t\d+\t\d+\s+|\s{2,}\d+\s{2,}\d+\s+/.test(text)) return "FRUTAS";
   if (/garonda/i.test(text)) return "GARONDA";
   if (/^\s*\d{9}\s+[A-Za-z]/.test(lines[0]) && /\s+\d+(?:\.\d+)?\s+[A-Za-z]+\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?$/.test(lines[0])) {
     return "GARONDA";
@@ -961,6 +1049,8 @@ function parseBy(fmt: string, mergedLines: string[]){
       (fmt === "CLUBMARTHA") ? parseCLUBMARTHA(line) :
       (fmt === "BIOEN") ? parseBIOEN(line) :
       (fmt === "GARONDA") ? parseGARONDA(line) :
+      (fmt === "FRUTAS") ? parseFRUTAS(line) :
+      (fmt === "LAGARDERE") ? parseLAGARDERE(line) :
       parseHM(line);
 
     if (p.ok) rows.push(p.row);
@@ -1239,6 +1329,7 @@ export default function App() {
                    parsedData.fmt === "CLUBMARTHA" ? "cfgCLUBMARTHA" : 
                    parsedData.fmt === "BIOEN" ? "cfgBIOEN" : 
                    parsedData.fmt === "GARONDA" ? "cfgGARONDA" : 
+                   parsedData.fmt === "LAGARDERE" ? "cfgLAGARDERE" : 
                    parsedData.fmt === "CAPDEMAR" ? "cfgCAPDEMAR" : "cfgHM";
                    
     const rawWanted = config[fmtKey as keyof typeof config] as string;
@@ -1354,6 +1445,8 @@ export default function App() {
               { id: 'CAPDEMAR', label: 'CAP DE MAR' },
               { id: 'BIOEN', label: 'BIOEN' },
               { id: 'GARONDA', label: 'GARONDA' },
+              { id: 'FRUTAS', label: 'FRUTAS' },
+              { id: 'LAGARDERE', label: 'LAGARDERE' },
               { id: 'AUTO', label: 'Auto-detectar' },
             ].map(f => (
               <label key={f.id} className="flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors">
@@ -1409,6 +1502,8 @@ export default function App() {
                   { key: 'cfgCAPDEMAR', title: 'CAP DE MAR' },
                   { key: 'cfgBIOEN', title: 'BIOEN' },
                   { key: 'cfgGARONDA', title: 'GARONDA' },
+                  { key: 'cfgFRUTAS', title: 'FRUTAS' },
+                  { key: 'cfgLAGARDERE', title: 'LAGARDERE' },
                 ].map(item => (
                   <div key={item.key} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
                     <h4 className="font-medium text-sm mb-2 text-gray-700">{item.title}</h4>
