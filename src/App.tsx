@@ -896,7 +896,10 @@ function parseCAPDEMAR(lines: string[]) {
       const desc = normWS([...pendingDesc, inlineDesc].join(" "));
       pendingDesc = [];
       
-      rows.push([codigo, desc, codProv, cantidad, um, precio, precio2, importe]);
+      const savedCode = getSavedCode(desc);
+      const finalCode = savedCode || codigo;
+      
+      rows.push([finalCode, desc, codProv, cantidad, um, precio, precio2, importe]);
     } else {
       pendingDesc.push(line);
     }
@@ -1014,15 +1017,16 @@ function autoDetect(text: string){
   if (/olivia hotelscollection/i.test(text) || /HOJA DE PEDIDO POR CENTRO/i.test(text)) return "OLIVIA";
   if (/SERUNION/i.test(text) || /spairal/i.test(text)) return "SERUNION";
   if (/CLUB MARTHA/i.test(text) || /Hotels & Resorts Blue Sea/i.test(text) || /club mac/i.test(text) || /^\s*\d+\s+.*\s+\d+(?:[.,]\d+)?\s+(?:[A-Za-z]+|BDJ\s+\d+\s+UNIDAD|BDJ\s+\d+GR\s+\d+\s+UNID1A\.D55000|MJO\s+\d+\s+UNIDAD)\s+\d+(?:[.,]\d{5})\s+\d+(?:[.,]\d{5})\s+\d+(?:[.,]\d{2})\s*$/m.test(text)) return "CLUBMARTHA";
-  if (/cap de mar/i.test(text)) return "CAPDEMAR";
+  if (/cap de mar/i.test(text) || /^\s*[A-Z0-9]+(?:\s+.*)?\s+\d+\s+\d+(?:[.,]\d+)?\s+[A-Za-z.\/]+\s+\d+(?:[.,]\d+)?\s+\d+(?:[.,]\d+)?\s+\d+(?:[.,]\d+)?\s*$/m.test(text)) return "CAPDEMAR";
   if (/bioen/i.test(text)) return "BIOEN";
   if (/^\s*\d{13}\s+\d{6}\s+/m.test(text)) return "LAGARDERE";
   if (/\t\d+\t\d+\s+|\s{2,}\d+\s{2,}\d+\s+/.test(text)) return "FRUTAS";
   if (/garonda/i.test(text)) return "GARONDA";
-  if (/^\s*\d{9}\s+[A-Za-z]/.test(lines[0]) && /\s+\d+(?:\.\d+)?\s+[A-Za-z]+\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?$/.test(lines[0])) {
+  const textLines = text.split(/\r?\n/).filter(l => l.trim());
+  if (textLines.length > 0 && /^\s*\d{9}\s+[A-Za-z]/.test(textLines[0]) && /\s+\d+(?:\.\d+)?\s+[A-Za-z]+\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?$/.test(textLines[0])) {
     return "GARONDA";
   }
-  if (/^\s*\d{7}\s+[A-Za-z]/.test(lines[0]) && /\s+\d+(?:\.\d+)?\s+[A-Za-z]+\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?$/.test(lines[0])) {
+  if (textLines.length > 0 && /^\s*\d{7}\s+[A-Za-z]/.test(textLines[0]) && /\s+\d+(?:\.\d+)?\s+[A-Za-z]+\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?$/.test(textLines[0])) {
     return "BIOEN";
   }
   if (/^\s*\d+\s+(?:.*\s+)?\d+\.\d{2}\s+[A-Za-z]+\s*$/m.test(text)) return "HELIOS";
