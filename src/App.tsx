@@ -18,7 +18,8 @@ const HEADERS = {
   CAPDEMAR: ["Código", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Precio 2", "Importe"],
   GARONDA: ["Producto", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Coste unitario", "Importe"],
   FRUTAS: ["Descripción", "Cód. Prov.", "Código", "Cantidad", "Unidad"],
-  LAGARDERE: ["EAN", "Código", "Descripción", "Cantidad", "Unidad"]
+  LAGARDERE: ["EAN", "Código", "Descripción", "Cantidad", "Unidad"],
+  NUEVO_FORMATO: ["Código", "Descripción", "Precio", "Unidad", "Cantidad"]
 };
 
 // ================= MEMORIA DE CÓDIGOS =================
@@ -62,6 +63,7 @@ const DEFAULT_COPY_CFG = {
   cfgCAPDEMAR: "Código\nDescripción\nCód. proveedor\nCantidad\nU. M.\nPrecio\nImporte",
   cfgBIOEN: "Código\nDescripción\nCód. proveedor\nCantidad\nU. M.\nPrecio\nCoste\nImporte",
   cfgLAGARDERE: "EAN\nCódigo\nDescripción\nCantidad\nUnidad",
+  cfgNUEVO_FORMATO: "Código\nDescripción\nPrecio\nUnidad\nCantidad",
   includeHeader: true,
   strictCopy: true
 };
@@ -240,6 +242,28 @@ function parseLAGARDERE(line: string): ParseResult {
   const finalCode = savedCode || shortCode;
 
   return { ok: true, row: [ean, finalCode, descripcion, cantidad, unidad], original };
+}
+
+function parseNUEVO_FORMATO(line: string): ParseResult {
+  const original = line;
+  const cleanLine = line.trim();
+  if (!cleanLine) return { ok: false, original, reason: "Línea vacía" };
+
+  // Example: 1150501139 BERENJENA RALLADA GANDIA 1,20 KG 5,00
+  // Or separated by tabs.
+  const m = cleanLine.match(/^(\d{10})\s+(.+?)\s+(\d+(?:[.,]\d+)?)\s+([A-Za-z.]+)\s+(\d+(?:[.,]\d+)?)$/);
+  if (!m) return { ok: false, original, reason: "No coincide con el formato" };
+
+  const codigo = m[1];
+  const desc = m[2].trim();
+  const precio = m[3];
+  const unidad = m[4];
+  const cantidad = m[5];
+
+  const savedCode = getSavedCode(desc);
+  const finalCode = savedCode || codigo;
+
+  return { ok: true, row: [finalCode, desc, precio, unidad, cantidad], original };
 }
 
 // ================= HM =================
@@ -967,7 +991,7 @@ function joinBrokenLines(lines: string[], fmt: string){
     return out;
   }
 
-  if (fmt === "NIUUT" || fmt === "H24" || fmt === "CAPDEMAR" || fmt === "BIOEN" || fmt === "GARONDA" || fmt === "LAGARDERE") {
+  if (fmt === "NIUUT" || fmt === "H24" || fmt === "CAPDEMAR" || fmt === "BIOEN" || fmt === "GARONDA" || fmt === "LAGARDERE" || fmt === "NUEVO_FORMATO") {
     for (const raw0 of lines) {
       const t = clean(raw0);
       if (!t) continue;
@@ -1023,6 +1047,7 @@ function autoDetect(text: string){
   if (/\t\d+\t\d+\s+|\s{2,}\d+\s{2,}\d+\s+/.test(text)) return "FRUTAS";
   if (/garonda/i.test(text)) return "GARONDA";
   const textLines = text.split(/\r?\n/).filter(l => l.trim());
+  if (/^\s*\d{10}\s+.+\s+\d+(?:[.,]\d+)?\s+[A-Za-z.]+\s+\d+(?:[.,]\d+)?\s*$/m.test(text)) return "NUEVO_FORMATO";
   if (textLines.length > 0 && /^\s*\d{9}\s+[A-Za-z]/.test(textLines[0]) && /\s+\d+(?:\.\d+)?\s+[A-Za-z]+\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?$/.test(textLines[0])) {
     return "GARONDA";
   }
@@ -1055,6 +1080,7 @@ function parseBy(fmt: string, mergedLines: string[]){
       (fmt === "GARONDA") ? parseGARONDA(line) :
       (fmt === "FRUTAS") ? parseFRUTAS(line) :
       (fmt === "LAGARDERE") ? parseLAGARDERE(line) :
+      (fmt === "NUEVO_FORMATO") ? parseNUEVO_FORMATO(line) :
       parseHM(line);
 
     if (p.ok) rows.push(p.row);
@@ -1334,6 +1360,7 @@ export default function App() {
                    parsedData.fmt === "BIOEN" ? "cfgBIOEN" : 
                    parsedData.fmt === "GARONDA" ? "cfgGARONDA" : 
                    parsedData.fmt === "LAGARDERE" ? "cfgLAGARDERE" : 
+                   parsedData.fmt === "NUEVO_FORMATO" ? "cfgNUEVO_FORMATO" : 
                    parsedData.fmt === "CAPDEMAR" ? "cfgCAPDEMAR" : "cfgHM";
                    
     const rawWanted = config[fmtKey as keyof typeof config] as string;
@@ -1395,6 +1422,9 @@ export default function App() {
       } else if (fmt === "FRUTAS") {
         codeCol = 2;
         descCol = 0;
+      } else if (fmt === "NUEVO_FORMATO") {
+        codeCol = 0;
+        descCol = 1;
       }
       
       if (colIndex === codeCol && descCol !== -1) {
@@ -1460,6 +1490,7 @@ export default function App() {
               { id: 'GARONDA', label: 'GARONDA' },
               { id: 'FRUTAS', label: 'FRUTAS' },
               { id: 'LAGARDERE', label: 'LAGARDERE' },
+              { id: 'NUEVO_FORMATO', label: 'NUEVO FORMATO (VERDE)' },
               { id: 'AUTO', label: 'Auto-detectar' },
             ].map(f => (
               <label key={f.id} className="flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors">
@@ -1517,6 +1548,7 @@ export default function App() {
                   { key: 'cfgGARONDA', title: 'GARONDA' },
                   { key: 'cfgFRUTAS', title: 'FRUTAS' },
                   { key: 'cfgLAGARDERE', title: 'LAGARDERE' },
+                  { key: 'cfgNUEVO_FORMATO', title: 'NUEVO FORMATO (VERDE)' },
                 ].map(item => (
                   <div key={item.key} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
                     <h4 className="font-medium text-sm mb-2 text-gray-700">{item.title}</h4>
