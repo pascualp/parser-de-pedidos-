@@ -317,9 +317,10 @@ function parseHM(line: string): ParseResult {
   const desc = tokens.slice(descStart, i - 3).join(" ").trim();
   if (!desc) return { ok:false, original, reason:"Descripción vacía" };
   
-  if (!ref) ref = getSavedCode(desc);
+  const saved = getSavedCode(desc);
+  const finalRef = saved || ref;
 
-  return { ok:true, row:[ref, art, desc, mc, cant, bonif, precio, dto1, dto2, dto3, importe], original };
+  return { ok:true, row:[finalRef, art, desc, mc, cant, bonif, precio, dto1, dto2, dto3, importe], original };
 }
 
 // ================= AMADIP =================
@@ -1393,6 +1394,48 @@ export default function App() {
     setStatus(null);
   };
 
+  const handleSaveAllCodes = () => {
+    if (!parsedData) return;
+    const fmt = parsedData.fmt;
+    let codeCol = -1;
+    let descCol = -1;
+
+    if (fmt === "HM") {
+      codeCol = 0;
+      descCol = 2;
+    } else if (["AMADIP", "CARIBBEAN", "FLAMINGO", "HELIOS", "MARHOTELES", "OLIVIA", "SERUNION", "CAPDEMAR"].includes(fmt)) {
+      codeCol = 0;
+      descCol = 1;
+    } else if (["NIUUT", "H24"].includes(fmt)) {
+      codeCol = 0;
+      descCol = 2;
+    } else if (fmt === "CLUBMARTHA") {
+      codeCol = 2;
+      descCol = 1;
+    } else if (fmt === "LAGARDERE") {
+      codeCol = 1;
+      descCol = 2;
+    } else if (fmt === "GARONDA" || fmt === "BIOEN") {
+      codeCol = 2;
+      descCol = 1;
+    } else if (fmt === "FRUTAS") {
+      codeCol = 2;
+      descCol = 0;
+    } else if (fmt === "NUEVO_FORMATO") {
+      codeCol = 0;
+      descCol = 1;
+    }
+
+    if (codeCol !== -1 && descCol !== -1) {
+      parsedData.rows.forEach(row => {
+        const c = row[codeCol];
+        const d = row[descCol];
+        if (c && d) saveCode(d, c);
+      });
+      setStatus({ msg: "Memoria de códigos actualizada correctamente.", type: "ok" });
+    }
+  };
+
   const handleCellChange = (rowIndex: number, colIndex: number, value: string) => {
     setParsedData(prev => {
       if (!prev) return prev;
@@ -1633,6 +1676,16 @@ export default function App() {
             >
               <Trash2 className="w-4 h-4" />
               Limpiar
+            </button>
+
+            <button 
+              onClick={handleSaveAllCodes}
+              disabled={!parsedData}
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 font-medium rounded-lg hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+              title="Guardar todos los códigos modificados en la memoria"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              Guardar Códigos
             </button>
 
             {status && (
