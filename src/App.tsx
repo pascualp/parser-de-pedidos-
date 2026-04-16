@@ -1404,7 +1404,10 @@ export default function App() {
       let codeCol = -1;
       let descCol = -1;
       
-      if (["HM", "AMADIP", "CARIBBEAN", "FLAMINGO", "HELIOS", "MARHOTELES", "OLIVIA", "SERUNION", "CAPDEMAR"].includes(fmt)) {
+      if (fmt === "HM") {
+        codeCol = 0;
+        descCol = 2; // "Descripción" is at index 2
+      } else if (["AMADIP", "CARIBBEAN", "FLAMINGO", "HELIOS", "MARHOTELES", "OLIVIA", "SERUNION", "CAPDEMAR"].includes(fmt)) {
         codeCol = 0;
         descCol = 1;
       } else if (["NIUUT", "H24"].includes(fmt)) {
@@ -1677,36 +1680,44 @@ export default function App() {
               <tbody>
                 {parsedData.rows.map((row, i) => (
                   <tr key={i} className="border-b border-gray-100 hover:bg-gray-50 transition-colors last:border-b-0">
-                    {row.map((cell, j) => (
-                      <td key={j} className="p-0 border-r border-gray-100 last:border-r-0 text-gray-600 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-blue-50">
-                        <input
-                          type="text"
-                          value={cell}
-                          onChange={(e) => handleCellChange(i, j, e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'ArrowDown' || e.key === 'Enter') {
-                              e.preventDefault();
-                              const nextInput = document.querySelector(`tr:nth-child(${i + 2}) td:nth-child(${j + 1}) input`) as HTMLInputElement;
-                              nextInput?.focus();
-                            } else if (e.key === 'ArrowUp') {
-                              e.preventDefault();
-                              const prevInput = document.querySelector(`tr:nth-child(${i}) td:nth-child(${j + 1}) input`) as HTMLInputElement;
-                              prevInput?.focus();
-                            } else if (e.key === 'ArrowRight') {
-                              e.preventDefault();
-                              const nextInput = document.querySelector(`tr:nth-child(${i + 1}) td:nth-child(${j + 2}) input`) as HTMLInputElement;
-                              nextInput?.focus();
-                            } else if (e.key === 'ArrowLeft') {
-                              e.preventDefault();
-                              const prevInput = document.querySelector(`tr:nth-child(${i + 1}) td:nth-child(${j}) input`) as HTMLInputElement;
-                              prevInput?.focus();
-                            }
-                          }}
-                          className="w-full h-full p-3 bg-transparent outline-none min-w-[80px]"
-                          placeholder={j === 0 ? "Sin código" : ""}
-                        />
-                      </td>
-                    ))}
+                    {row.map((cell, j) => {
+                      const header = parsedData.headers[j].toLowerCase();
+                      const isCode = header.includes("cód") || header.includes("ref") || header === "producto" || header === "artículo";
+                      const needsMod = isCode && cell.trim().startsWith("7");
+
+                      return (
+                        <td key={j} className="p-0 border-r border-gray-100 last:border-r-0 text-gray-600 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-blue-50">
+                          <input
+                            type="text"
+                            value={cell}
+                            onChange={(e) => handleCellChange(i, j, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'ArrowDown' || e.key === 'Enter') {
+                                e.preventDefault();
+                                const nextInput = document.querySelector(`tr:nth-child(${i + 2}) td:nth-child(${j + 1}) input`) as HTMLInputElement;
+                                nextInput?.focus();
+                              } else if (e.key === 'ArrowUp') {
+                                e.preventDefault();
+                                const prevInput = document.querySelector(`tr:nth-child(${i}) td:nth-child(${j + 1}) input`) as HTMLInputElement;
+                                prevInput?.focus();
+                              } else if (e.key === 'ArrowRight') {
+                                e.preventDefault();
+                                const nextInput = document.querySelector(`tr:nth-child(${i + 1}) td:nth-child(${j + 2}) input`) as HTMLInputElement;
+                                nextInput?.focus();
+                              } else if (e.key === 'ArrowLeft') {
+                                e.preventDefault();
+                                const prevInput = document.querySelector(`tr:nth-child(${i + 1}) td:nth-child(${j}) input`) as HTMLInputElement;
+                                prevInput?.focus();
+                              }
+                            }}
+                            className={`w-full h-full p-3 bg-transparent outline-none min-w-[80px] transition-colors ${
+                              needsMod ? 'bg-red-50 text-red-700 font-bold placeholder:text-red-400 placeholder:font-normal' : ''
+                            }`}
+                            placeholder={needsMod ? "Modificar código..." : (j === 0 ? "Sin código" : "")}
+                          />
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>
