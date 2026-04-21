@@ -238,10 +238,19 @@ function parseLAGARDERE(line: string): ParseResult {
   const ean = parts[0];
   const shortCode = parts[1];
   const descripcion = parts.slice(2).join(" ");
+  
+  let finalCantidad = cantidad;
+  if (descripcion.toUpperCase().includes("MINI BROTE ESPINACA 1KG")) {
+    const num = parseFloat(cantidad.replace(",", "."));
+    if (!isNaN(num)) {
+      finalCantidad = (num / 0.25).toString().replace(".", ",");
+    }
+  }
+
   const savedCode = getSavedCode(descripcion);
   const finalCode = savedCode || shortCode;
 
-  return { ok: true, row: [ean, finalCode, descripcion, cantidad, unidad], original };
+  return { ok: true, row: [ean, finalCode, descripcion, finalCantidad, unidad], original };
 }
 
 function parseNUEVO_FORMATO(line: string): ParseResult {
@@ -1817,8 +1826,15 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {parsedData.rows.map((row, i) => (
-                  <tr key={i} className="border-b border-gray-100 hover:bg-gray-50 transition-colors last:border-b-0">
+                {parsedData.rows.map((row, i) => {
+                  const isSpecialBrote = parsedData.fmt === "LAGARDERE" && row.some(c => c.includes("MINI BROTE ESPINACA 1kg"));
+                  return (
+                    <tr 
+                      key={i} 
+                      className={`border-b border-gray-100 transition-colors last:border-b-0 ${
+                        isSpecialBrote ? 'bg-red-100' : 'hover:bg-gray-50'
+                      }`}
+                    >
                     {row.map((cell, j) => {
                       const header = parsedData.headers[j].toLowerCase();
                       const isCode = header.includes("cód") || header.includes("ref") || header === "producto" || header === "artículo";
@@ -1857,8 +1873,9 @@ export default function App() {
                         </td>
                       );
                     })}
-                  </tr>
-                ))}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
