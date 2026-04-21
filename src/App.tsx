@@ -246,24 +246,53 @@ function parseLAGARDERE(line: string): ParseResult {
 
 function parseNUEVO_FORMATO(line: string): ParseResult {
   const original = line;
-  const cleanLine = line.trim();
+  const cleanLine = line.replace(/\s+/g, " ").trim();
   if (!cleanLine) return { ok: false, original, reason: "Línea vacía" };
 
-  // Example: 1150501139 BERENJENA RALLADA GANDIA 1,20 KG 5,00
-  // Or separated by tabs.
-  const m = cleanLine.match(/^(\d{10})\s+(.+?)\s+(\d+(?:[.,]\d+)?)\s+([A-Za-z.]+)\s+(\d+(?:[.,]\d+)?)$/);
+  // Expect: CODE(10) DESC ... [PART1] [PART2] [QTY]
+  // PART1 and PART2 can be UNIT/PRICE or PRICE/UNIT interchangeably
+  const m = cleanLine.match(/^(\d{10})\s+(.+?)\s+(\S+)\s+(\S+)\s+(\d+(?:[.,]\d+)?)$/);
   if (!m) return { ok: false, original, reason: "No coincide con el formato" };
 
   const codigo = m[1];
   const desc = m[2].trim();
-  const precio = m[3];
-  const unidad = m[4];
-  const cantidad = m[5];
+  const p1 = m[3];
+  const p2 = m[4];
+  const qty = m[5];
+
+  let precio = "";
+  let unidad = "";
+
+  const isNum = (s: string) => /^[\d,.]+$/.test(s) && /[0-9]/.test(s);
+  const p1IsNum = isNum(p1);
+  const p2IsNum = isNum(p2);
+
+  if (p1IsNum && !p2IsNum) {
+    precio = p1;
+    unidad = p2;
+  } else if (!p1IsNum && p2IsNum) {
+    precio = p2;
+    unidad = p1;
+  } else {
+    // Both numbers or both non-numbers.
+    // Try to find letters for unit.
+    if (/[a-zA-Z]/.test(p1) && !/[a-zA-Z]/.test(p2)) {
+      unidad = p1;
+      precio = p2;
+    } else if (!/[a-zA-Z]/.test(p1) && /[a-zA-Z]/.test(p2)) {
+      unidad = p2;
+      precio = p1;
+    } else {
+      // Default guess
+      unidad = p1;
+      precio = p2;
+    }
+  }
 
   const savedCode = getSavedCode(desc);
   const finalCode = savedCode || codigo;
 
-  return { ok: true, row: [finalCode, desc, precio, unidad, cantidad], original };
+  return { ok: true, row: [finalCode, desc, precio, unidad, qty], original };
 }
 
 // ================= HM =================
@@ -1030,6 +1059,7 @@ function joinBrokenLines(lines: string[], fmt: string){
 
 // ================= DETECT =================
 function autoDetect(text: string){
+  if (/^\s*\d{10}\s+.+\s+\S+\s+\S+\s+[\d,.]+\s*$/m.test(text)) return "NUEVO_FORMATO";
   if (/Pedido\s+H24/i.test(text)) return "H24";
   if (/\bPrecio\s+Unit\.\b/i.test(text) && /^\s*\d+\s+\d+\s+.+\s+\d+,\d{2}\s+\w+\s+Precio\s+Unit\./mi.test(text)) return "H24";
   if (/Precio\s+Unit\./i.test(text) && /\b\d+\|\d+\b/.test(text)) return "NIUUT";
@@ -1048,7 +1078,6 @@ function autoDetect(text: string){
   if (/\t\d+\t\d+\s+|\s{2,}\d+\s{2,}\d+\s+/.test(text)) return "FRUTAS";
   if (/garonda/i.test(text)) return "GARONDA";
   const textLines = text.split(/\r?\n/).filter(l => l.trim());
-  if (/^\s*\d{10}\s+.+\s+\d+(?:[.,]\d+)?\s+[A-Za-z.]+\s+\d+(?:[.,]\d+)?\s*$/m.test(text)) return "NUEVO_FORMATO";
   if (textLines.length > 0 && /^\s*\d{9}\s+[A-Za-z]/.test(textLines[0]) && /\s+\d+(?:\.\d+)?\s+[A-Za-z]+\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?$/.test(textLines[0])) {
     return "GARONDA";
   }
