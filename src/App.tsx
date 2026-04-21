@@ -1122,6 +1122,10 @@ function parseBy(fmt: string, mergedLines: string[]){
 function OccidentalParser() {
   const [inputData, setInputData] = useState("");
   const [rows, setRows] = useState<any[]>([]);
+  const [occHeaderInfo, setOccHeaderInfo] = useState({
+    centro: "Centro 2307 Occidental Playa de Palma",
+    almacen: "Almacén 2081 COCINA (Propio)"
+  });
   const [memoria, setMemoria] = useState<Record<string, string>>(() => {
     try { return JSON.parse(localStorage.getItem('misCodigosGuardados') || '{}'); }
     catch { return {}; }
@@ -1320,6 +1324,7 @@ export default function App() {
   } | null>(null);
 
   const [status, setStatus] = useState<{msg: string, type: 'ok'|'warn'|'err'} | null>(null);
+  const [colWidths, setColWidths] = useState<number[]>([]);
 
   useEffect(() => {
     const saved = localStorage.getItem(LS_CFG_KEY);
@@ -1351,6 +1356,7 @@ export default function App() {
     const headers = HEADERS[fmt as keyof typeof HEADERS] || HEADERS.HM;
 
     setParsedData({ headers, rows, errors, fmt });
+    setColWidths(headers.map(() => 150));
 
     if (!rows.length && !errors.length) {
       setStatus({ msg: "No se pudo parsear nada.", type: "err" });
@@ -1471,6 +1477,29 @@ export default function App() {
     window.print();
   };
 
+  const handleResize = (index: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.pageX;
+    const startWidth = colWidths[index];
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const newWidth = Math.max(50, startWidth + (moveEvent.pageX - startX));
+      setColWidths(prev => {
+        const next = [...prev];
+        next[index] = newWidth;
+        return next;
+      });
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  };
+
   const handleCellChange = (rowIndex: number, colIndex: number, value: string) => {
     setParsedData(prev => {
       if (!prev) return prev;
@@ -1524,8 +1553,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8 font-sans text-gray-900">
-      <div className="max-w-6xl mx-auto space-y-6 no-print">
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="max-w-6xl mx-auto space-y-6">
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 no-print">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Parser de pedidos → Excel</h1>
             <p className="text-gray-500 mt-1">Convierte texto de pedidos a formato tabla y cópialo a Excel</p>
@@ -1766,12 +1795,24 @@ export default function App() {
 
         {parsedData && parsedData.rows.length > 0 && (
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden overflow-x-auto printable-content">
-            <div className="print-header">RESUMEN DE PEDIDO - {parsedData.fmt}</div>
-            <table className="w-full text-left border-collapse text-sm whitespace-nowrap">
+            <div className="print-header px-5 pt-5 text-center font-bold text-xl">
+              RESUMEN DE PEDIDO - {parsedData.fmt}
+            </div>
+            <table className="w-full text-left border-collapse text-sm whitespace-nowrap table-fixed">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   {parsedData.headers.map((h, i) => (
-                    <th key={i} className="p-3 font-semibold text-gray-700 border-r border-gray-200 last:border-r-0">{h}</th>
+                    <th 
+                      key={i} 
+                      className="relative p-3 font-semibold text-gray-700 border-r border-gray-200 last:border-r-0 group"
+                      style={{ width: colWidths[i] || 'auto' }}
+                    >
+                      <span className="truncate block" title={h}>{h}</span>
+                      <div 
+                        onMouseDown={(e) => handleResize(i, e)}
+                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-blue-500 bg-transparent no-print transition-colors z-10"
+                      />
+                    </th>
                   ))}
                 </tr>
               </thead>
