@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronRight, ChevronDown, Copy, Trash2, Play, Settings2, CheckCircle2, AlertTriangle, XCircle, FileText, ClipboardList } from 'lucide-react';
+import { ChevronRight, ChevronDown, Copy, Trash2, Play, Settings2, CheckCircle2, AlertTriangle, XCircle, FileText, ClipboardList, Printer } from 'lucide-react';
 
 // ================= HEADERS =================
 const HEADERS = {
@@ -1257,7 +1257,8 @@ function OccidentalParser() {
         </div>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm printable-content">
+        <div className="print-header">ORDEN DE COMPRA - OCCIDENTAL</div>
         <div className="flex justify-between font-bold text-sm mb-4">
           <div>Centro 2307 Occidental Playa de Palma</div>
           <div>Almacén 2081 COCINA (Propio)</div>
@@ -1465,6 +1466,11 @@ export default function App() {
     }
   };
 
+  const handlePrint = () => {
+    if (!parsedData) return;
+    window.print();
+  };
+
   const handleCellChange = (rowIndex: number, colIndex: number, value: string) => {
     setParsedData(prev => {
       if (!prev) return prev;
@@ -1518,8 +1524,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8 font-sans text-gray-900">
-      <div className="max-w-6xl mx-auto space-y-6">
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
+      <div className="max-w-6xl mx-auto space-y-6 no-print">
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Parser de pedidos → Excel</h1>
             <p className="text-gray-500 mt-1">Convierte texto de pedidos a formato tabla y cópialo a Excel</p>
@@ -1544,7 +1550,7 @@ export default function App() {
 
         {activeTab === 'general' ? (
           <>
-            <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+            <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm no-print">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
             <span className="font-semibold text-gray-700">Formato:</span>
             {[
@@ -1588,7 +1594,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden config-section no-print">
           <button 
             onClick={toggleConfig}
             className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
@@ -1667,7 +1673,7 @@ export default function App() {
           )}
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-4 no-print">
           <textarea 
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -1717,6 +1723,15 @@ export default function App() {
               Guardar Códigos
             </button>
 
+            <button 
+              onClick={handlePrint}
+              disabled={!parsedData}
+              className="flex items-center gap-2 px-5 py-2.5 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+            >
+              <Printer className="w-4 h-4" />
+              Imprimir
+            </button>
+
             {status && (
               <div className={`ml-auto flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm ${
                 status.type === 'ok' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
@@ -1750,7 +1765,8 @@ export default function App() {
         )}
 
         {parsedData && parsedData.rows.length > 0 && (
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden overflow-x-auto">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden overflow-x-auto printable-content">
+            <div className="print-header">RESUMEN DE PEDIDO - {parsedData.fmt}</div>
             <table className="w-full text-left border-collapse text-sm whitespace-nowrap">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">

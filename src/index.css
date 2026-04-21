@@ -1,1 +1,94 @@
 @import "tailwindcss";
+
+@media print {
+  body {
+    background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  
+  /* Hide UI elements */
+  .no-print, 
+  nav, 
+  header, 
+  button, 
+  textarea,
+  .config-section,
+  .input-section {
+    display: none !important;
+  }
+
+  /* Ensure the main container doesn't have restrictive styles */
+  .min-h-screen {
+    min-height: 0 !important;
+    background: white !important;
+    padding: 0 !important;
+  }
+
+  .max-w-6xl, .max-w-7xl {
+    max-width: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Show the table */
+  .printable-content {
+    display: block !important;
+    border: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 9pt !important;
+    table-layout: auto !important;
+  }
+
+  th, td {
+    border: 1px solid #000 !important;
+    padding: 2pt 4pt !important;
+    color: #000 !important;
+    white-space: normal !important;
+  }
+
+  input[type="text"] {
+    border: none !important;
+    background: transparent !important;
+    color: #000 !important;
+    width: 100% !important;
+    font-size: inherit !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  
+  .bg-red-50 {
+    background-color: #fff !important;
+    border: 1.5pt solid red !important;
+  }
+
+  .text-red-700 {
+    color: red !important;
+  }
+
+  .print-header {
+    display: block !important;
+    font-weight: bold;
+    font-size: 14pt;
+    margin-bottom: 10pt;
+    text-align: center;
+  }
+
+  /* Fixed headers on every page */
+  thead {
+    display: table-header-group;
+  }
+}
+
+.print-header {
+  display: none;
+}
