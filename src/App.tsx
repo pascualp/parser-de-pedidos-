@@ -513,21 +513,29 @@ function parseBON(line: string): ParseResult {
 }
 
 // ================= NIU / UT =================
-const RE_NIU_PRICE_LINE = /^(.*?)\s*(\d+(?:,\d+)?)\s*(?:(un)\s*)?Precio\s+Unit\.\s+(\d+(?:,\d+)?)\s+(\d+(?:,\d+)?)\s*$/i;
+const RE_NIU_PRICE_LINE = /^(.*?)\s*(\d+(?:,\d+)?)\s*(?:([a-zA-Z.]{1,10})\s+)?Precio\s+Unit\.\s+(\d+(?:,\d+)?)\s+(\d+(?:,\d+)?)\s*$/i;
 const RE_NIU_REF_ONLY = /^(\d+)\s+(\d+\|\d+)(?:\s+(.*))?$/;
-const RE_NIU_UNIT_LINE = /^\s*(Kilogramos|Kilogramo|KG|Unidades|un|ud|ST)\s*$/i;
+const RE_NIU_UNIT_LINE = /^\s*(Kilogramos|Kilogramo|Kilos|KG|Unidades|un|ud|ST|Caja|caj|paq)\s*$/i;
 
 function looksLikeTrashNIU(line: string){
-  return /^(Ref Prov\.|Ref Cli\.|Descripción\b|Cdad\.\b|Concepto\b|Importe Total\b|Pedido\b|Emisor\b|Destinatario\b|Datos generales\b|Observaciones\b|Comentarios:|Contacto\b|Marca:|Unidad de Pedido:|Unidad de Facturacion:|Cdad a Facturar:|Periodo de entrega:|Divisa\b|Tipo Pedido\b|Fecha\b)/i.test(line)
-    || /^\d+\s*\/\s*\d+\s*$/.test(line)
-    || /^\d{6}$/.test(line)
-    || /^Marca:\s*/i.test(line);
+  const t = line.trim();
+  return /^(Ref Prov\.|Ref Cli\.|Descripción\b|Cdad\.\b|Concepto\b|Importe Total\b|Pedido\b|Emisor\b|Destinatario\b|Datos generales\b|Observaciones\b|Comentarios:|Contacto\b|Marca:|Unidad de Pedido:|Unidad de Facturacion:|Cdad a Facturar:|Periodo de entrega:|Divisa\b|Tipo Pedido\b|Fecha\b)/i.test(t)
+    || /^\d+\s*\/\s*\d+\s*$/.test(t)
+    || /^Marca:\s*/i.test(t)
+    || /^\d{6}$/.test(t);
+}
+
+function stripNIUCodes(text: string) {
+  if (!text) return "";
+  return text.split(/\s+/).filter(w => !/^\d{6}$/.test(w)).join(" ").trim();
 }
 
 function normalizeNIUUnit(unitRaw: string){
   const u = (unitRaw || "").toLowerCase();
   if (u.startsWith("kilo") || u === "kg") return "KG";
   if (u === "un" || u === "ud" || u === "unidades" || u === "st") return "UD";
+  if (u.startsWith("caj")) return "CAJ";
+  if (u.startsWith("paq")) return "PAQ";
   return unitRaw ? unitRaw.toUpperCase() : "";
 }
 
@@ -564,7 +572,7 @@ function parseNIUUT(lines: string[]){
       const prefix = mPrice[1].trim();
       pendingPrice = {
         qty: stripDot00(mPrice[2]),
-        unitInline: mPrice[3] ? "UD" : null,
+        unitInline: mPrice[3] ? normalizeNIUUnit(mPrice[3]) : null,
         unitPrice: mPrice[4],
         amount: mPrice[5]
       };
@@ -572,9 +580,10 @@ function parseNIUUT(lines: string[]){
       if (prefix) {
         const mRef = prefix.match(RE_NIU_REF_ONLY);
         if (mRef) {
-          let desc = mRef[3] || "";
+          let desc = stripNIUCodes(mRef[3] || "");
           if (pendingDescLines.length) {
-            desc = normWS(pendingDescLines.join(" ") + " " + desc);
+            const extra = stripNIUCodes(pendingDescLines.join(" "));
+            if (extra) desc = normWS(extra + " " + desc);
             pendingDescLines = [];
           }
           currentItem = { refCli: mRef[1], refProv: mRef[2], desc };
@@ -588,9 +597,10 @@ function parseNIUUT(lines: string[]){
 
     const mRefOnly = line.match(RE_NIU_REF_ONLY);
     if (mRefOnly) {
-      let desc = mRefOnly[3] || "";
+      let desc = stripNIUCodes(mRefOnly[3] || "");
       if (pendingDescLines.length) {
-        desc = normWS(pendingDescLines.join(" ") + " " + desc);
+        const extra = stripNIUCodes(pendingDescLines.join(" "));
+        if (extra) desc = normWS(extra + " " + desc);
         pendingDescLines = [];
       }
       currentItem = { refCli: mRefOnly[1], refProv: mRefOnly[2], desc };

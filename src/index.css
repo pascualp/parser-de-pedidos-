@@ -19,13 +19,13 @@
   }
 
   /* Ensure the main container doesn't have restrictive styles */
-  .min-h-screen {
+  .min-h-screen, div {
     min-height: 0 !important;
-    background: white !important;
-    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
   }
 
-  .max-w-6xl, .max-w-7xl {
+  .max-w-6xl, .max-w-7xl, .mx-auto {
     max-width: none !important;
     width: 100% !important;
     margin: 0 !important;
