@@ -7,7 +7,7 @@ const HEADERS = {
   AMADIP: ["Ref.Prov.","Artículo","Formato","Cantidad","Precio","Dto.","IVA","Total"],
   CARIBBEAN: ["Producto","Descripción","Cód. proveedor","Cantidad","U. M."],
   FLAMINGO: ["Código","Descripción","Formato","Cant."],
-  BONANZA: ["Descripción","Unidades","Unid. medida"],
+  BONANZA: ["Código", "Descripción", "Unidades", "Unid. medida"],
   NIUUT: ["Ref Cli.","Ref Prov.","Descripción","Cantidad","U. M.","Precio Unit.","Importe"],
   H24: ["Código","Ref Prov.","Descripción","Cantidad","U. M.","Precio Unit.","Importe"],
   HELIOS: ["Código", "Descripción", "Cantidad", "U. M."],
@@ -17,6 +17,7 @@ const HEADERS = {
   CLUBMARTHA: ["Producto", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Coste unitario", "Importe"],
   CAPDEMAR: ["Código", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Precio 2", "Importe"],
   GARONDA: ["Producto", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Coste unitario", "Importe"],
+  BIOEN: ["Código", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Coste", "Importe"],
   FRUTAS: ["Descripción", "Cód. Prov.", "Código", "Cantidad", "Unidad"],
   LAGARDERE: ["EAN", "Código", "Descripción", "Cantidad", "Unidad"],
   NUEVO_FORMATO: ["Código", "Descripción", "Precio", "Unidad", "Cantidad"]
@@ -39,6 +40,14 @@ function saveCode(desc: string, code: string) {
     memoria[desc.toUpperCase().trim()] = code.trim();
     localStorage.setItem('misCodigosGuardados', JSON.stringify(memoria));
   } catch (e) {}
+}
+
+function getCodeDescColumns(fmt: string): [number, number] {
+  if (fmt === "HM" || fmt === "NIUUT" || fmt === "H24") return [0, 2];
+  if (fmt === "LAGARDERE") return [1, 2];
+  if (["CLUBMARTHA", "GARONDA", "BIOEN"].includes(fmt)) return [2, 1];
+  if (fmt === "FRUTAS") return [2, 0];
+  return [0, 1];
 }
 
 // ================= CONFIG / STORAGE =================
@@ -1374,6 +1383,18 @@ export default function App() {
     const { rows, errors } = parseBy(fmt, merged);
     const headers = HEADERS[fmt as keyof typeof HEADERS] || HEADERS.HM;
 
+    // Inject saved codes forcefully to ensure they persist across parses
+    const [cCol, dCol] = getCodeDescColumns(fmt);
+    if (cCol !== -1 && dCol !== -1) {
+      rows.forEach(row => {
+        const desc = row[dCol];
+        if (desc) {
+          const saved = getSavedCode(desc);
+          if (saved) row[cCol] = saved;
+        }
+      });
+    }
+
     setParsedData({ headers, rows, errors, fmt });
     setColWidths(headers.map(() => 150));
 
@@ -1452,34 +1473,7 @@ export default function App() {
   const handleSaveAllCodes = () => {
     if (!parsedData) return;
     const fmt = parsedData.fmt;
-    let codeCol = -1;
-    let descCol = -1;
-
-    if (fmt === "HM") {
-      codeCol = 0;
-      descCol = 2;
-    } else if (["AMADIP", "CARIBBEAN", "FLAMINGO", "HELIOS", "MARHOTELES", "OLIVIA", "SERUNION", "CAPDEMAR"].includes(fmt)) {
-      codeCol = 0;
-      descCol = 1;
-    } else if (["NIUUT", "H24"].includes(fmt)) {
-      codeCol = 0;
-      descCol = 2;
-    } else if (fmt === "CLUBMARTHA") {
-      codeCol = 2;
-      descCol = 1;
-    } else if (fmt === "LAGARDERE") {
-      codeCol = 1;
-      descCol = 2;
-    } else if (fmt === "GARONDA" || fmt === "BIOEN") {
-      codeCol = 2;
-      descCol = 1;
-    } else if (fmt === "FRUTAS") {
-      codeCol = 2;
-      descCol = 0;
-    } else if (fmt === "NUEVO_FORMATO") {
-      codeCol = 0;
-      descCol = 1;
-    }
+    const [codeCol, descCol] = getCodeDescColumns(fmt);
 
     if (codeCol !== -1 && descCol !== -1) {
       parsedData.rows.forEach(row => {
@@ -1527,34 +1521,7 @@ export default function App() {
       newRows[rowIndex][colIndex] = value;
       
       const fmt = prev.fmt;
-      let codeCol = -1;
-      let descCol = -1;
-      
-      if (fmt === "HM") {
-        codeCol = 0;
-        descCol = 2; // "Descripción" is at index 2
-      } else if (["AMADIP", "CARIBBEAN", "FLAMINGO", "HELIOS", "MARHOTELES", "OLIVIA", "SERUNION", "CAPDEMAR"].includes(fmt)) {
-        codeCol = 0;
-        descCol = 1;
-      } else if (["NIUUT", "H24"].includes(fmt)) {
-        codeCol = 0;
-        descCol = 2;
-      } else if (fmt === "CLUBMARTHA") {
-        codeCol = 2;
-        descCol = 1;
-      } else if (fmt === "LAGARDERE") {
-        codeCol = 1;
-        descCol = 2;
-      } else if (fmt === "GARONDA" || fmt === "BIOEN") {
-        codeCol = 2;
-        descCol = 1;
-      } else if (fmt === "FRUTAS") {
-        codeCol = 2;
-        descCol = 0;
-      } else if (fmt === "NUEVO_FORMATO") {
-        codeCol = 0;
-        descCol = 1;
-      }
+      const [codeCol, descCol] = getCodeDescColumns(fmt);
       
       if (colIndex === codeCol && descCol !== -1) {
         const desc = newRows[rowIndex][descCol];
