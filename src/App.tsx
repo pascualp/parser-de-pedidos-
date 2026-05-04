@@ -881,38 +881,80 @@ function looksLikeTrashCLUBMARTHA(line: string) {
   return /^(BON ANY|B57954166|C\/ Cardenal|07007|Illes Balears|España|Pedido de compra|Entrega|CLUB MARTHA|Hotels & Resorts|B57817215|Parc de la Mar|07660|Producto\s+Descripción|Total pedido|\d+\s+de\s+\d+|es club mac)/i.test(line);
 }
 
-function parseCLUBMARTHA(line: string): ParseResult {
-  const original = line;
-  line = normWS(line);
+function parseCLUBMARTHA(lines: string[]) {
+  const rows: string[][] = [];
+  const errors: {original: string, reason: string}[] = [];
   
-  const tailRegex = /\s+(\d+(?:[.,]\d+)?)\s+((?:[A-Za-z]|\d+[A-Za-z]).*?)\s+(\S+)\s+(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)$/;
-  const m = line.match(tailRegex);
-  if (!m) return { ok: false, original, reason: "No coincide con el formato de CLUB MARTHA" };
+  const tailRegex = /\s+(\d+(?:[.,]\d+)?)\s+((?:[A-Za-z]|\d+[A-Za-z]|BDJ|MJO).*?)\s+(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)(?:\s+([a-zA-Z\u00C0-\u017F].*))?$/;
   
-  const cantidad = stripDot00(m[1]);
-  const um = m[2];
-  const precio = m[3];
-  const coste = m[4];
-  const importe = m[5];
-  
-  const head = line.replace(tailRegex, "").trim();
-  const headMatch = head.match(/^(\d+)\s+(.*)$/);
-  if (!headMatch) return { ok: false, original, reason: "Falta código de producto o descripción" };
-  
-  const producto = headMatch[1];
-  let descAndProv = headMatch[2];
-  
-  let codProv = "";
-  const provMatch = descAndProv.match(/^(.*?)\s+(\d+)$/);
-  if (provMatch) {
-    descAndProv = provMatch[1];
-    codProv = provMatch[2];
+  let pendingDesc: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const original = lines[i];
+    let line = normWS(original);
+    
+    if (/^\d+\s+de\s+\d+/.test(line)) continue;
+    
+    const m = line.match(tailRegex);
+    if (m) {
+      const cantidad = stripDot00(m[1]);
+      const um = m[2];
+      const precio = m[3];
+      const coste = m[4];
+      const importe = m[5];
+      const trailingDesc = m[6] ? " " + m[6].trim() : "";
+      
+      const head = line.replace(tailRegex, "").trim();
+      
+      let producto = "";
+      let descAndProv = head;
+      let codProv = "";
+      
+      const headMatch = head.match(/^(\d{6,})\s+(.*)$/);
+      if (headMatch) {
+         producto = headMatch[1];
+         descAndProv = headMatch[2];
+      } else {
+         if (pendingDesc.length > 0) {
+             const pd0Match = pendingDesc[0].match(/^(\d{6,})\s+(.*)$/);
+             if (pd0Match) {
+                 producto = pd0Match[1];
+                 pendingDesc[0] = pd0Match[2];
+             }
+         }
+      }
+      
+      if (/^\d+$/.test(descAndProv)) {
+          codProv = descAndProv;
+          descAndProv = "";
+      } else {
+          const provMatch = descAndProv.match(/^(.*?)\s+(\d+)$/);
+          if (provMatch) {
+            descAndProv = provMatch[1];
+            codProv = provMatch[2];
+          } else if (!descAndProv.trim()) {
+            if (pendingDesc.length > 0) {
+              const lastIndex = pendingDesc.length - 1;
+              const matchLast = pendingDesc[lastIndex].match(/^(.*?)\s+(\d+)$/);
+              if (matchLast) {
+                 pendingDesc[lastIndex] = matchLast[1];
+                 codProv = matchLast[2];
+              }
+            }
+          }
+      }
+      
+      const desc = normWS([...pendingDesc, descAndProv, trailingDesc].join(" "));
+      pendingDesc = [];
+      
+      if (!codProv) codProv = getSavedCode(desc);
+      rows.push([producto, desc, codProv, cantidad, um, precio, coste, importe]);
+    } else {
+      pendingDesc.push(line);
+    }
   }
   
-  const desc = descAndProv;
-  if (!codProv) codProv = getSavedCode(desc);
-  
-  return { ok: true, row: [producto, desc, codProv, cantidad, um, precio, coste, importe], original };
+  return { rows, errors };
 }
 
 // ================= CAP DE MAR =================
@@ -1049,7 +1091,7 @@ function joinBrokenLines(lines: string[], fmt: string){
     return out;
   }
 
-  if (fmt === "NIUUT" || fmt === "H24" || fmt === "CAPDEMAR" || fmt === "BIOEN" || fmt === "GARONDA" || fmt === "LAGARDERE" || fmt === "NUEVO_FORMATO") {
+  if (fmt === "NIUUT" || fmt === "H24" || fmt === "CAPDEMAR" || fmt === "CLUBMARTHA" || fmt === "BIOEN" || fmt === "GARONDA" || fmt === "LAGARDERE" || fmt === "NUEVO_FORMATO") {
     for (const raw0 of lines) {
       const t = clean(raw0);
       if (!t) continue;
@@ -1074,7 +1116,7 @@ function joinBrokenLines(lines: string[], fmt: string){
       (fmt === "MARHOTELES") ? (/^\d+\s+[A-Za-z]/.test(t0) || /\d+(,\d+)?\s+\d+(,\d+)?\s+\d+(,\d+)?\s+\d+(,\d+)?\s+\d+(,\d+)?$/.test(t0)) :
       (fmt === "OLIVIA") ? /\s\d+(?:[.,]\d+)?\s+[A-Za-z.]+\s*$/.test(t0) :
       (fmt === "SERUNION") ? /^\d{6}\s+/.test(t0) :
-      (fmt === "CLUBMARTHA") ? /^\d+\s+[A-Za-z]/.test(t0) :
+      (fmt === "CLUBMARTHA") ? (/^\d+\s+[A-Za-z]/.test(t0) || (/^[A-Za-z]/.test(t0) && /\b\d{6,10}\b/.test(t0))) :
       (fmt === "FRUTAS") ? true :
       (fmt === "LAGARDERE") ? /^\d{13}\s+\d{6}\s+/.test(t0) :
       ( /^\d+\s+\d+\s+/.test(t0) || /^\d{9}\s+/.test(t0) || RE_FLA_TAIL.test(t0) );
@@ -1099,7 +1141,7 @@ function autoDetect(text: string){
   if (/Mar Hotels/i.test(text) || /\bCoste\s+unitario\s+Descuento\b/i.test(text)) return "MARHOTELES";
   if (/olivia hotelscollection/i.test(text) || /HOJA DE PEDIDO POR CENTRO/i.test(text)) return "OLIVIA";
   if (/SERUNION/i.test(text) || /spairal/i.test(text)) return "SERUNION";
-  if (/CLUB MARTHA/i.test(text) || /Hotels & Resorts Blue Sea/i.test(text) || /club mac/i.test(text) || /^\s*\d+\s+.*\s+\d+(?:[.,]\d+)?\s+(?:[A-Za-z]+|BDJ\s+\d+\s+UNIDAD|BDJ\s+\d+GR\s+\d+\s+UNID1A\.D55000|MJO\s+\d+\s+UNIDAD)\s+\d+(?:[.,]\d{5})\s+\d+(?:[.,]\d{5})\s+\d+(?:[.,]\d{2})\s*$/m.test(text)) return "CLUBMARTHA";
+  if (/CLUB MARTHA/i.test(text) || /Hotels & Resorts Blue Sea/i.test(text) || /club mac/i.test(text) || /^\s*\d+\s+.*\s+\d+(?:[.,]\d+)?\s+(?:[A-Za-z]+|BDJ\s+\d+\s+UNIDAD|BDJ\s+\d+GR\s+\d+\s+UNID1A\.D55000|MJO\s+\d+\s+UNIDA[D\[L]?)\s+\d+(?:[.,]\d{5})\s+\d+(?:[.,]\d{5})\s+\d+(?:[.,]\d{2})\s*$/m.test(text)) return "CLUBMARTHA";
   if (/cap de mar/i.test(text) || /^\s*[A-Z0-9]+(?:\s+.*)?\s+\d+\s+\d+(?:[.,]\d+)?\s+[A-Za-z.\/]+\s+\d+(?:[.,]\d+)?\s+\d+(?:[.,]\d+)?\s+\d+(?:[.,]\d+)?\s*$/m.test(text)) return "CAPDEMAR";
   if (/bioen/i.test(text)) return "BIOEN";
   if (/^\s*\d{13}\s+\d{6}\s+/m.test(text)) return "LAGARDERE";
@@ -1120,6 +1162,7 @@ function parseBy(fmt: string, mergedLines: string[]){
   if (fmt === "NIUUT") return parseNIUUT(mergedLines);
   if (fmt === "H24") return parseH24(mergedLines);
   if (fmt === "CAPDEMAR") return parseCAPDEMAR(mergedLines);
+  if (fmt === "CLUBMARTHA") return parseCLUBMARTHA(mergedLines);
 
   const rows: string[][] = [];
   const errors: {original: string, reason: string}[] = [];
@@ -1133,7 +1176,6 @@ function parseBy(fmt: string, mergedLines: string[]){
       (fmt === "MARHOTELES") ? parseMAR(line) :
       (fmt === "OLIVIA") ? parseOLIVIA(line) :
       (fmt === "SERUNION") ? parseSERUNION(line) :
-      (fmt === "CLUBMARTHA") ? parseCLUBMARTHA(line) :
       (fmt === "BIOEN") ? parseBIOEN(line) :
       (fmt === "GARONDA") ? parseGARONDA(line) :
       (fmt === "FRUTAS") ? parseFRUTAS(line) :
@@ -1391,6 +1433,27 @@ export default function App() {
         if (desc) {
           const saved = getSavedCode(desc);
           if (saved) row[cCol] = saved;
+        }
+      });
+    }
+
+    // Auto-calculate for 0.250G items
+    const cantIdx = headers.findIndex(h => /^(cant\.?|cantidad|unidades)$/i.test(h));
+    if (cantIdx !== -1) {
+      rows.forEach(row => {
+        const fullText = row.join(" ").toUpperCase();
+        if (/(0[.,]250\s*(?:G|KG)\b|250\s*G\b)/i.test(fullText)) {
+          const rawCant = row[cantIdx];
+          const hasComma = rawCant.includes(",");
+          // Handle standard ES number format (e.g., "1.234,56" or "10,00" or simple "10.00")
+          const normalized = rawCant.replace(/\./g, "").replace(",", ".");
+          const parsedCant = parseFloat(normalized);
+          if (!isNaN(parsedCant) && parsedCant !== 0) {
+            const calculated = parsedCant / 0.250;
+            row[cantIdx] = Number.isInteger(calculated) 
+              ? calculated.toString() 
+              : calculated.toFixed(2).replace(".", hasComma ? "," : ".");
+          }
         }
       });
     }
