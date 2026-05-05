@@ -45,7 +45,7 @@ function saveCode(desc: string, code: string) {
 function getCodeDescColumns(fmt: string): [number, number] {
   if (fmt === "HM" || fmt === "NIUUT" || fmt === "H24") return [0, 2];
   if (fmt === "LAGARDERE") return [1, 2];
-  if (["CLUBMARTHA", "GARONDA", "BIOEN"].includes(fmt)) return [2, 1];
+  if (["CLUBMARTHA", "GARONDA", "BIOEN", "CAPDEMAR"].includes(fmt)) return [2, 1];
   if (fmt === "FRUTAS") return [2, 0];
   return [0, 1];
 }
