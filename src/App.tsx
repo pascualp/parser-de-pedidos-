@@ -1902,6 +1902,7 @@ export default function App() {
                       const header = parsedData.headers[j].toLowerCase();
                       const isCode = header.includes("cód") || header.includes("ref") || header === "producto" || header === "artículo";
                       const needsMod = isCode && cell.trim().startsWith("7");
+                      const isSpecialCode = isCode && ["342", "381", "3541", "4512", "9920"].includes(cell.trim());
 
                       return (
                         <td key={j} className="p-0 border-r border-gray-100 last:border-r-0 text-gray-600 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-blue-50">
@@ -1929,7 +1930,8 @@ export default function App() {
                               }
                             }}
                             className={`w-full h-full p-3 bg-transparent outline-none min-w-[80px] transition-colors ${
-                              needsMod ? 'bg-red-50 text-red-700 font-bold placeholder:text-red-400 placeholder:font-normal' : ''
+                              needsMod ? 'bg-red-50 text-red-700 font-bold placeholder:text-red-400 placeholder:font-normal' : 
+                              (isSpecialCode ? 'text-red-500 font-bold' : '')
                             }`}
                             placeholder={needsMod ? "Modificar código..." : (j === 0 ? "Sin código" : "")}
                           />
