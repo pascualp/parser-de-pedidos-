@@ -1,7 +1,14 @@
+import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import firebaseConfig from '../firebase-applet-config.json';
+
+const app = initializeApp(firebaseConfig);
+export const db = getFirestore(app);
+export const auth = getAuth();
+
 import React, { useState, useEffect } from 'react';
 import { ChevronRight, ChevronDown, Copy, Trash2, Play, Settings2, CheckCircle2, AlertTriangle, XCircle, FileText, ClipboardList, Printer } from 'lucide-react';
-
-// ================= HEADERS =================
 const HEADERS = {
   HM: ["Referencia","Artículo","Descripción","M.C.","Cant.","Bonif.","Precio","Dto1","Dto2","Dto3","Importe"],
   AMADIP: ["Ref.Prov.","Artículo","Formato","Cantidad","Precio","Dto.","IVA","Total"],
@@ -23,23 +30,37 @@ const HEADERS = {
   NUEVO_FORMATO: ["Código", "Descripción", "Precio", "Unidad", "Cantidad"]
 };
 
+import { doc, getDoc, setDoc } from 'firebase/firestore';                
+
 // ================= MEMORIA DE CÓDIGOS =================
-function getSavedCode(desc: string): string {
+async function getSavedCode(desc: string, fmt: string): Promise<string> {
   try {
-    const memoria = JSON.parse(localStorage.getItem('misCodigosGuardados') || '{}');
-    return memoria[desc.toUpperCase().trim()] || "";
+    const sanitizedDesc = desc.toUpperCase().trim().replace(/\//g, '_');
+    const docRef = doc(db, 'codeMappings', `${fmt}_${sanitizedDesc}`);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return docSnap.data().code;
+    }
   } catch (e) {
-    return "";
+    console.error("Error fetching code:", e);
   }
+  return "";
 }
 
-function saveCode(desc: string, code: string) {
+async function saveCode(desc: string, code: string, fmt: string) {
   if (!desc || !code.trim()) return;
   try {
-    const memoria = JSON.parse(localStorage.getItem('misCodigosGuardados') || '{}');
-    memoria[desc.toUpperCase().trim()] = code.trim();
-    localStorage.setItem('misCodigosGuardados', JSON.stringify(memoria));
-  } catch (e) {}
+    const sanitizedDesc = desc.toUpperCase().trim().replace(/\//g, '_');
+    const docRef = doc(db, 'codeMappings', `${fmt}_${sanitizedDesc}`);
+    await setDoc(docRef, {
+      format: fmt,
+      description: desc.toUpperCase().trim(),
+      code: code.trim(),
+      userId: 'default_user' 
+    });
+  } catch (e) {
+    console.error("Error saving code:", e);
+  }
 }
 
 function getCodeDescColumns(fmt: string): [number, number] {
@@ -90,7 +111,7 @@ function looksLikeTotalsOrFooter(line: string){
   return /Subtotal|Base Imponible|Importe Total|Euros|Base imponible|IVA total|Total pedido|HOJA DE PEDIDO|DESCRIPCION|Depto\./i.test(line);
 }
 function looksLikeTrashCommon(line: string){
-  return /^(Pedido\b|^\d+\s*\/\s*\d+\s*$|^\d+\s+de\s+\d+$)/i.test(line);
+  return /^(Pedido\b|^\d+\s*\/\s*\d+\s*$|^\d+\s+de\s+\d+$|^\d+\s+-K-)/i.test(line);
 }
 function normWS(s: string){ return (s ?? "").replace(/\s+/g, " ").trim(); }
 
@@ -173,7 +194,7 @@ function parseGARONDA(line: string): ParseResult {
   return { ok: true, row: [codigo, descAndProv, codProv, cantidad, um, precio, coste, importe], original };
 }
 
-function parseFRUTAS(line: string): ParseResult {
+async function parseFRUTAS(line: string): Promise<ParseResult> {
   const original = line;
   const cleanLine = line.trim();
   if (!cleanLine) return { ok: false, original, reason: "Línea vacía" };
@@ -223,7 +244,7 @@ function parseFRUTAS(line: string): ParseResult {
   return { ok: true, row: [descripcion, codProv, codigo, cantidad, unidad], original };
 }
 
-function parseLAGARDERE(line: string): ParseResult {
+async function parseLAGARDERE(line: string): Promise<ParseResult> {
   const original = line;
   const cleanLine = line.trim();
   if (!cleanLine) return { ok: false, original, reason: "Línea vacía" };
@@ -256,13 +277,13 @@ function parseLAGARDERE(line: string): ParseResult {
     }
   }
 
-  const savedCode = getSavedCode(descripcion);
+  const savedCode = await getSavedCode(descripcion, "LAGARDERE");
   const finalCode = savedCode || shortCode;
 
   return { ok: true, row: [ean, finalCode, descripcion, finalCantidad, unidad], original };
 }
 
-function parseNUEVO_FORMATO(line: string): ParseResult {
+async function parseNUEVO_FORMATO(line: string): Promise<ParseResult> {
   const original = line;
   const cleanLine = line.replace(/\s+/g, " ").trim();
   if (!cleanLine) return { ok: false, original, reason: "Línea vacía" };
@@ -307,7 +328,7 @@ function parseNUEVO_FORMATO(line: string): ParseResult {
     }
   }
 
-  const savedCode = getSavedCode(desc);
+  const savedCode = await getSavedCode(desc, "NIUUT");
   const finalCode = savedCode || codigo;
 
   return { ok: true, row: [finalCode, desc, precio, unidad, qty], original };
@@ -320,7 +341,7 @@ function looksLikeTrashHM(line: string) {
 }
 
 const HM_MC = new Set(["Kg","Ud","Paq","Caja","Bulto","Mjo","Manojo","Unidad","UNIDAD","KG"]);
-function parseHM(line: string): ParseResult {
+async function parseHM(line: string): Promise<ParseResult> {
   const original = line;
   line = normWS(line);
   const tokens = line.split(" ");
@@ -364,7 +385,7 @@ function parseHM(line: string): ParseResult {
   const desc = tokens.slice(descStart, i - 3).join(" ").trim();
   if (!desc) return { ok:false, original, reason:"Descripción vacía" };
   
-  const saved = getSavedCode(desc);
+  const saved = await getSavedCode(desc, "H24");
   const finalRef = saved || ref;
 
   return { ok:true, row:[finalRef, art, desc, mc, cant, bonif, precio, dto1, dto2, dto3, importe], original };
@@ -372,7 +393,7 @@ function parseHM(line: string): ParseResult {
 
 // ================= AMADIP =================
 const AMADIP_FMT = new Set(["KG","UNIDAD","MANOJO","CAJA","PAQUETE","TARRINA","BOLSA","CAJ","UD"]);
-function parseAMADIP(line: string): ParseResult {
+async function parseAMADIP(line: string): Promise<ParseResult> {
   const original = line;
   line = normWS(line);
   const tokens = line.split(" ");
@@ -415,14 +436,14 @@ function parseAMADIP(line: string): ParseResult {
   if (!articulo) return { ok:false, original, reason:"Artículo vacío" };
   if (!formato) return { ok:false, original, reason:"Formato vacío" };
   
-  if (!refProv) refProv = getSavedCode(articulo);
+  if (!refProv) refProv = await getSavedCode(articulo, "CAPDEMAR");
 
   return { ok:true, row:[refProv, articulo, formato, cantidad, precio, dto, iva, total], original };
 }
 
 // ================= CARIBBEAN =================
 const CAR_UM = new Set(["KG","UD","MJ","PAQ","CAJA","BULTO"]);
-function parseCAR(line: string): ParseResult {
+async function parseCAR(line: string): Promise<ParseResult> {
   const original = line;
   line = normWS(line);
   let tokens = line.split(" ");
@@ -452,7 +473,7 @@ function parseCAR(line: string): ParseResult {
   const desc = tokens.slice(descStart, tokens.length - 3).join(" ").trim();
   if (!desc) return { ok:false, original, reason:"Descripción vacía" };
   
-  if (!producto) producto = getSavedCode(desc);
+  if (!producto) producto = await getSavedCode(desc, "CARIBBEAN");
 
   return { ok:true, row:[producto, desc, codProv, cantidad, um], original };
 }
@@ -473,7 +494,7 @@ function looksLikeTrashFlamingo(line: string){
   return /^(Pedido\b|MySeaHouse\b|Dirección\b|Direccion\b|C\/|Calle\b|Carrer\b|Spain\b|S\.L\.U\.|S\.L\b|B\d{8}|NIF\b|CIF\b|Email\b|@|Albar[aá]n\b|Proveedor\b|Almac[eé]n\b|Fecha\b|Tel[eé]fono\b)/i.test(line)
     || /pedidos@/i.test(line);
 }
-function parseFLA(line: string): ParseResult {
+async function parseFLA(line: string): Promise<ParseResult> {
   const original = line;
   line = normWS(line);
 
@@ -497,7 +518,7 @@ function parseFLA(line: string): ParseResult {
   const desc = tokens.slice(startDesc, tokens.length - 1).join(" ").trim();
   if (!desc) return { ok:false, original, reason:"Descripción vacía (FLAMINGO)" };
   
-  if (!code) code = getSavedCode(desc);
+  if (!code) code = await getSavedCode(desc, "FLAMINGO");
 
   return { ok:true, row:[code, desc, fmtUp + " (1)", qty], original };
 }
@@ -720,7 +741,7 @@ function parseH24(lines: string[]){
 }
 
 // ================= HELIOS =================
-function parseHELIOS(line: string): ParseResult {
+async function parseHELIOS(line: string): Promise<ParseResult> {
   const original = line;
   line = normWS(line);
   const tokens = line.split(" ");
@@ -742,7 +763,7 @@ function parseHELIOS(line: string): ParseResult {
   }
   const desc = tokens.slice(descStart, tokens.length - 2).join(" ").trim();
   
-  if (!code) code = getSavedCode(desc);
+  if (!code) code = await getSavedCode(desc, "FRUTAS");
   
   return { ok: true, row: [code, desc, qty, um], original };
 }
@@ -757,7 +778,7 @@ function looksLikeTrashMAR(line: string) {
     || /^\d+\s+de\s+\d+$/.test(line);
 }
 
-function parseMAR(line: string): ParseResult {
+async function parseMAR(line: string): Promise<ParseResult> {
   const original = line;
   line = normWS(line);
   
@@ -785,7 +806,7 @@ function parseMAR(line: string): ParseResult {
   }
   const desc = tokens.slice(descStart).join(" ");
   
-  if (!producto) producto = getSavedCode(desc);
+  if (!producto) producto = await getSavedCode(desc, "MARHOTELES");
   
   return { ok: true, row: [producto, desc, um, cantidad, precio, coste, dto, importe], original };
 }
@@ -804,7 +825,7 @@ function parseOLIVIA(line: string): ParseResult {
   if (!match) return { ok: false, original, reason: "No coincide con formato OLIVIA" };
   
   const desc = match[1];
-  const code = getSavedCode(desc);
+  const code = getSavedCode(desc, "OLIVIA");
   
   return { ok: true, row: [code, desc, stripDot00(match[2]), match[3]], original };
 }
@@ -871,7 +892,7 @@ function parseSERUNION(line: string): ParseResult {
     um = umCantMatch[2];
   }
   
-  if (!code) code = getSavedCode(desc);
+  if (!code) code = getSavedCode(desc, "SERUNION");
   
   return { ok: true, row: [code, desc, cant, cantUnidad, um, precio, importe], original };
 }
@@ -947,7 +968,7 @@ function parseCLUBMARTHA(lines: string[]) {
       const desc = normWS([...pendingDesc, descAndProv, trailingDesc].join(" "));
       pendingDesc = [];
       
-      if (!codProv) codProv = getSavedCode(desc);
+      if (!codProv) codProv = getSavedCode(desc, "CLUBMARTHA");
       rows.push([producto, desc, codProv, cantidad, um, precio, coste, importe]);
     } else {
       pendingDesc.push(line);
@@ -1020,7 +1041,7 @@ function parseCAPDEMAR(lines: string[]) {
       const desc = normWS([...pendingDesc, inlineDesc].join(" "));
       pendingDesc = [];
       
-      const savedCode = getSavedCode(desc);
+      const savedCode = getSavedCode(desc, "NUEVO_FORMATO");
       const finalCode = savedCode || codigo;
       const finalCodProv = codProv || codigo; // Uses codigo if codProv is empty
       
@@ -1159,7 +1180,7 @@ function autoDetect(text: string){
   return "HM";
 }
 
-function parseBy(fmt: string, mergedLines: string[]){
+async function parseBy(fmt: string, mergedLines: string[]){
   if (fmt === "NIUUT") return parseNIUUT(mergedLines);
   if (fmt === "H24") return parseH24(mergedLines);
   if (fmt === "CAPDEMAR") return parseCAPDEMAR(mergedLines);
@@ -1168,7 +1189,7 @@ function parseBy(fmt: string, mergedLines: string[]){
   const rows: string[][] = [];
   const errors: {original: string, reason: string}[] = [];
   for (const line of mergedLines){
-    const p =
+    const p = await (
       (fmt === "AMADIP") ? parseAMADIP(line) :
       (fmt === "CARIBBEAN") ? parseCAR(line) :
       (fmt === "FLAMINGO") ? parseFLA(line) :
@@ -1182,7 +1203,8 @@ function parseBy(fmt: string, mergedLines: string[]){
       (fmt === "FRUTAS") ? parseFRUTAS(line) :
       (fmt === "LAGARDERE") ? parseLAGARDERE(line) :
       (fmt === "NUEVO_FORMATO") ? parseNUEVO_FORMATO(line) :
-      parseHM(line);
+      parseHM(line)
+    );
 
     if (p.ok) rows.push(p.row);
     else errors.push({ original: p.original, reason: (p as any).reason });
@@ -1418,24 +1440,24 @@ export default function App() {
     localStorage.setItem(LS_FOLD_KEY, next ? "1" : "0");
   };
 
-  const handleParse = () => {
+  const handleParse = async () => {
     const text = input || "";
     const fmt = format === "AUTO" ? autoDetect(text) : format;
     const lines = text.split(/\r?\n/);
     const merged = joinBrokenLines(lines, fmt);
-    const { rows, errors } = parseBy(fmt, merged);
+    const { rows, errors } = await parseBy(fmt, merged);
     const headers = HEADERS[fmt as keyof typeof HEADERS] || HEADERS.HM;
 
     // Inject saved codes forcefully to ensure they persist across parses
     const [cCol, dCol] = getCodeDescColumns(fmt);
     if (cCol !== -1 && dCol !== -1) {
-      rows.forEach(row => {
+      await Promise.all(rows.map(async row => {
         const desc = row[dCol];
         if (desc) {
-          const saved = getSavedCode(desc);
+          const saved = await getSavedCode(desc, fmt);
           if (saved) row[cCol] = saved;
         }
-      });
+      }));
     }
 
     // Auto-calculate for 0.250G items
@@ -1534,17 +1556,17 @@ export default function App() {
     setStatus(null);
   };
 
-  const handleSaveAllCodes = () => {
+  const handleSaveAllCodes = async () => {
     if (!parsedData) return;
     const fmt = parsedData.fmt;
     const [codeCol, descCol] = getCodeDescColumns(fmt);
 
     if (codeCol !== -1 && descCol !== -1) {
-      parsedData.rows.forEach(row => {
+      await Promise.all(parsedData.rows.map(async row => {
         const c = row[codeCol];
         const d = row[descCol];
-        if (c && d) saveCode(d, c);
-      });
+        if (c && d) await saveCode(d, c, parsedData.fmt);
+      }));
       setStatus({ msg: "Memoria de códigos actualizada correctamente.", type: "ok" });
     }
   };
@@ -1589,7 +1611,7 @@ export default function App() {
       
       if (colIndex === codeCol && descCol !== -1) {
         const desc = newRows[rowIndex][descCol];
-        saveCode(desc, value);
+        saveCode(desc, value, fmt); // No await here because setParsedData is synchronous
       }
       
       return { ...prev, rows: newRows };

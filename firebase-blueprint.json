@@ -1,0 +1,22 @@
+{
+  "entities": {
+    "CodeMapping": {
+      "title": "Code Mapping",
+      "description": "Stores user-defined mappings between descriptions and codes per format.",
+      "type": "object",
+      "properties": {
+        "format": { "type": "string" },
+        "description": { "type": "string" },
+        "code": { "type": "string" },
+        "userId": { "type": "string" }
+      },
+      "required": ["format", "description", "code", "userId"]
+    }
+  },
+  "firestore": {
+    "/codeMappings/{mappingId}": {
+      "schema": "CodeMapping",
+      "description": "Individual code mappings."
+    }
+  }
+}
