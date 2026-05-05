@@ -1022,8 +1022,9 @@ function parseCAPDEMAR(lines: string[]) {
       
       const savedCode = getSavedCode(desc);
       const finalCode = savedCode || codigo;
+      const finalCodProv = codProv || codigo; // Uses codigo if codProv is empty
       
-      rows.push([finalCode, desc, codProv, cantidad, um, precio, precio2, importe]);
+      rows.push([finalCode, desc, finalCodProv, cantidad, um, precio, precio2, importe]);
     } else {
       pendingDesc.push(line);
     }
