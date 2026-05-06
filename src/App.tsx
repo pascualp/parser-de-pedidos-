@@ -143,7 +143,7 @@ function parseBIOEN(line: string): ParseResult {
   const codigo = headMatch[1];
   const rest = headMatch[2];
   
-  const tailRegex = /\s+(\d+(?:\.\d+)?)\s+((?:[A-Za-z]|\d+[A-Za-z]).*?)\s+(\S+)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)$/;
+  const tailRegex = /\s+(\d+(?:\.\d+)?)\s+(.+?)\s+(\S+)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)$/;
   const m2 = rest.match(tailRegex);
   
   if (!m2) return { ok: false, original, reason: "No coincide con el formato de BIOEN" };
@@ -158,8 +158,8 @@ function parseBIOEN(line: string): ParseResult {
   
   const cantidad = m2[1];
   const um = m2[2];
-  const precio = m2[3].replace(/[^\d.,]/g, ''); // Clean up OCR errors like UNID1A.D55000
-  const coste = m2[4];
+  const precio = m2[3].replace(/[^\d.,]/g, ''); 
+  const coste = m2[4].replace(/[^\d.,]/g, '');
   const importe = m2[5];
   
   return { ok: true, row: [codigo, descAndProv, codProv, cantidad, um, precio, coste, importe], original };
@@ -183,7 +183,7 @@ function parseGARONDA(line: string): ParseResult {
   const codigo = headMatch[1];
   const rest = headMatch[2];
   
-  const tailRegex = /\s+(\d+(?:\.\d+)?)\s+((?:[A-Za-z]|\d+[A-Za-z]).*?)\s+(\S+)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)$/;
+  const tailRegex = /\s+(\d+(?:\.\d+)?)\s+(.+?)\s+(\S+)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)$/;
   const m2 = rest.match(tailRegex);
   
   if (!m2) return { ok: false, original, reason: "No coincide con el formato de GARONDA" };
@@ -198,8 +198,8 @@ function parseGARONDA(line: string): ParseResult {
   
   const cantidad = m2[1].replace(/\.00$/, "");
   const um = m2[2];
-  const precio = m2[3].replace(/\.00$/, "");
-  const coste = m2[4].replace(/\.00$/, "");
+  const precio = m2[3].replace(/[^\d.,]/g, '');
+  const coste = m2[4].replace(/[^\d.,]/g, '');
   const importe = m2[5].replace(/\.00$/, "");
   
   return { ok: true, row: [codigo, descAndProv, codProv, cantidad, um, precio, coste, importe], original };
@@ -917,7 +917,7 @@ async function parseCLUBMARTHA(lines: string[]) {
   const rows: string[][] = [];
   const errors: {original: string, reason: string}[] = [];
   
-  const tailRegex = /\s+(\d+(?:[.,]\d+)?)\s+((?:[A-Za-z]|\d+[A-Za-z]|BDJ|MJO).*?)\s+(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)(?:\s+([a-zA-Z\u00C0-\u017F].*))?$/;
+  const tailRegex = /\s+(\d+(?:[.,]\d+)?)\s+(.+?)\s+(\S+)\s+(\S+)\s+(\d+(?:[.,]\d+)?)(?:\s+([a-zA-Z\u00C0-\u017F].*))?$/;
   
   let pendingDesc: string[] = [];
 
@@ -931,8 +931,8 @@ async function parseCLUBMARTHA(lines: string[]) {
     if (m) {
       const cantidad = stripDot00(m[1]);
       const um = m[2];
-      const precio = m[3];
-      const coste = m[4];
+      const precio = m[3].replace(/[^\d.,]/g, '');
+      const coste = m[4].replace(/[^\d.,]/g, '');
       const importe = m[5];
       const trailingDesc = m[6] ? " " + m[6].trim() : "";
       
@@ -1005,14 +1005,14 @@ async function parseCAPDEMAR(lines: string[]) {
     if (!line) continue;
     if (looksLikeTotalsOrFooter(line) || looksLikeTrashCommon(line) || looksLikeTrashCAPDEMAR(line)) continue;
 
-    const tailRegex = /(?:\s+|^)(\d+(?:[.,]\d+)?)\s+([A-Za-z.\/]+)\s+(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)$/;
+    const tailRegex = /(?:\s+|^)(\d+(?:[.,]\d+)?)\s+(.+?)\s+(\S+)\s+(\S+)\s+(\d+(?:[.,]\d+)?)$/;
     const m = line.match(tailRegex);
 
     if (m) {
       const cantidad = m[1];
       const um = m[2];
-      const precio = m[3];
-      const precio2 = m[4];
+      const precio = m[3].replace(/[^\d.,]/g, '');
+      const precio2 = m[4].replace(/[^\d.,]/g, '');
       const importe = m[5];
 
       const head = line.replace(tailRegex, "").trim();
@@ -1174,8 +1174,8 @@ function autoDetect(text: string){
   if (/Mar Hotels/i.test(text) || /\bCoste\s+unitario\s+Descuento\b/i.test(text)) return "MARHOTELES";
   if (/olivia hotelscollection/i.test(text) || /HOJA DE PEDIDO POR CENTRO/i.test(text)) return "OLIVIA";
   if (/SERUNION/i.test(text) || /spairal/i.test(text)) return "SERUNION";
-  if (/CLUB MARTHA/i.test(text) || /Hotels & Resorts Blue Sea/i.test(text) || /club mac/i.test(text) || /^\s*\d+\s+.*\s+\d+(?:[.,]\d+)?\s+(?:[A-Za-z]+|BDJ\s+\d+\s+UNIDAD|BDJ\s+\d+GR\s+\d+\s+UNID1A\.D55000|MJO\s+\d+\s+UNIDA[D\[L]?)\s+\d+(?:[.,]\d{5})\s+\d+(?:[.,]\d{5})\s+\d+(?:[.,]\d{2})\s*$/m.test(text)) return "CLUBMARTHA";
-  if (/cap de mar/i.test(text) || /^\s*[A-Z0-9]+(?:\s+.*)?\s+\d+\s+\d+(?:[.,]\d+)?\s+[A-Za-z.\/]+\s+\d+(?:[.,]\d+)?\s+\d+(?:[.,]\d+)?\s+\d+(?:[.,]\d+)?\s*$/m.test(text)) return "CAPDEMAR";
+  if (/CLUB MARTHA/i.test(text) || /Hotels & Resorts Blue Sea/i.test(text) || /club mac/i.test(text) || /mac hotel/i.test(text) || /^\s*\d+\s+.*\s+\d+(?:[.,]\d+)?\s+.+?\s+\S+\s+\S+\s+\d+(?:[.,]\d+)?\s*$/m.test(text)) return "CLUBMARTHA";
+  if (/cap de mar/i.test(text) || /mac hotel/i.test(text) || /^\s*[A-Z0-9]+(?:\s+.*)?\s+\d+\s+\d+(?:[.,]\d+)?\s+[A-Za-z.\/]+\s+\d+(?:[.,]\d+)?\s+\d+(?:[.,]\d+)?\s+\d+(?:[.,]\d+)?\s*$/m.test(text)) return "CAPDEMAR";
   if (/bioen/i.test(text)) return "BIOEN";
   if (/^\s*\d{13}\s+\d{6}\s+/m.test(text)) return "LAGARDERE";
   if (/\t\d+\t\d+\s+|\s{2,}\d+\s{2,}\d+\s+/.test(text)) return "FRUTAS";
