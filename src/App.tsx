@@ -143,7 +143,7 @@ function parseBIOEN(line: string): ParseResult {
   const codigo = headMatch[1];
   const rest = headMatch[2];
   
-  const tailRegex = /\s+(\d+(?:\.\d+)?)\s+(.+?)\s+(\S+)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)$/;
+  const tailRegex = /\s+(\d+(?:\.\d+)?)\s+([A-Za-z].*?)\s+(\S+)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)$/;
   const m2 = rest.match(tailRegex);
   
   if (!m2) return { ok: false, original, reason: "No coincide con el formato de BIOEN" };
@@ -183,7 +183,7 @@ function parseGARONDA(line: string): ParseResult {
   const codigo = headMatch[1];
   const rest = headMatch[2];
   
-  const tailRegex = /\s+(\d+(?:\.\d+)?)\s+(.+?)\s+(\S+)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)$/;
+  const tailRegex = /\s+(\d+(?:\.\d+)?)\s+([A-Za-z].*?)\s+(\S+)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)$/;
   const m2 = rest.match(tailRegex);
   
   if (!m2) return { ok: false, original, reason: "No coincide con el formato de GARONDA" };
@@ -917,8 +917,8 @@ async function parseCLUBMARTHA(lines: string[]) {
   const rows: string[][] = [];
   const errors: {original: string, reason: string}[] = [];
   
-  // Robust regex: matches Quantity (2 decimals), UM (text), Precio, optional Coste, Total (2 decimals)
-  const tailRegex = /\s+(\d+[.,]\d{2})\s+(.+?)\s+(\d+[.,]\d{2,5})(?:\s+(\d+[.,]\d{2,5}))?\s+(\d+[.,]\d{2})\s*$/;
+  // Robust regex: matches Quantity, UM (text), Precio, optional Coste, Total
+  const tailRegex = /\s+(\d+(?:[.,]\d+)?)\s+([A-Za-z].*?)\s+(\d+(?:[.,]\d+)?)(?:\s+(\d+(?:[.,]\d+)?))?\s+(\d+(?:[.,]\d+)?)\s*$/;
   
   let pendingDesc: string[] = [];
 
@@ -990,7 +990,7 @@ async function parseCAPDEMAR(lines: string[]) {
     if (!line) continue;
     if (looksLikeTotalsOrFooter(line) || looksLikeTrashCommon(line) || looksLikeTrashCAPDEMAR(line)) continue;
 
-    const tailRegex = /\s+(\d+[.,]\d{2})\s+(.+?)\s+(\d+[.,]\d{2,5})(?:\s+(\d+[.,]\d{2,5}))?\s+(\d+[.,]\d{2})\s*$/;
+    const tailRegex = /\s+(\d+(?:[.,]\d+)?)\s+([A-Za-z].*?)\s+(\d+(?:[.,]\d+)?)(?:\s+(\d+(?:[.,]\d+)?))?\s+(\d+(?:[.,]\d+)?)\s*$/;
     const m = line.match(tailRegex);
 
     if (m) {
@@ -1159,8 +1159,8 @@ function autoDetect(text: string){
   if (/Mar Hotels/i.test(text) || /\bCoste\s+unitario\s+Descuento\b/i.test(text)) return "MARHOTELES";
   if (/olivia hotelscollection/i.test(text) || /HOJA DE PEDIDO POR CENTRO/i.test(text)) return "OLIVIA";
   if (/SERUNION/i.test(text) || /spairal/i.test(text)) return "SERUNION";
-  if (/CLUB MARTHA/i.test(text) || /Hotels & Resorts Blue Sea/i.test(text) || /club mac/i.test(text) || /mac hotel/i.test(text) || /^\s*\d+\s+.*\s+\d+[.,]\d{2}\s+.+?\s+\d+[.,]\d{2,5}\s+/m.test(text)) return "CLUBMARTHA";
-  if (/cap de mar/i.test(text) || /^\s*[A-Z0-9]+(?:\s+.*)?\s+\d+[.,]\d{2}\s+[A-Za-z.\/]+\s+\d+[.,]\d{2}/m.test(text)) return "CAPDEMAR";
+  if (/CLUB MARTHA/i.test(text) || /Hotels & Resorts Blue Sea/i.test(text) || /club mac/i.test(text) || /mac hotel/i.test(text) || /^\s*\d+\s+.*\s+\d+(?:[.,]\d+)?\s+.+?\s+\S+\s+\S+\s+\d+(?:[.,]\d+)?\s*$/m.test(text)) return "CLUBMARTHA";
+  if (/cap de mar/i.test(text) || /^\s*[A-Z0-9]+(?:\s+.*)?\s+\d+(?:[.,]\d+)?\s+[A-Za-z.\/]+\s+\d+(?:[.,]\d+)?\s+\d+(?:[.,]\d+)?\s+\d+(?:[.,]\d+)?\s*$/m.test(text)) return "CAPDEMAR";
   if (/bioen/i.test(text)) return "BIOEN";
   if (/^\s*\d{13}\s+\d{6}\s+/m.test(text)) return "LAGARDERE";
   if (/\t\d+\t\d+\s+|\s{2,}\d+\s{2,}\d+\s+/.test(text)) return "FRUTAS";
@@ -1397,7 +1397,7 @@ function OccidentalParser() {
                 <tr key={row.id} className="border-b border-gray-200 hover:bg-gray-50">
                   <td className="p-1"><input type="text" value={row.pos} onChange={e => updateRow(row.id, 'pos', e.target.value)} className="w-full bg-transparent outline-none focus:bg-[#fffde7] focus:ring-1 focus:ring-[#ffd600] px-1" /></td>
                   <td className="p-1"><input type="text" value={row.fecha} onChange={e => updateRow(row.id, 'fecha', e.target.value)} className="w-full bg-transparent outline-none focus:bg-[#fffde7] focus:ring-1 focus:ring-[#ffd600] px-1" /></td>
-                  <td className="p-1"><input id={`material-${i}`} type="text" value={row.material} onChange={e => updateRow(row.id, 'material', e.target.value)} onKeyDown={e => handleKeyDown(e, i)} className={`w-full bg-transparent outline-none focus:bg-[#fffde7] focus:ring-1 focus:ring-[#ffd600] px-1 font-bold ${["342", "381", "3541", "4512", "9920"].includes(row.material) ? "text-red-500" : "text-blue-700"}`} /></td>
+                  <td className="p-1"><input id={`material-${i}`} type="text" value={row.material} onChange={e => updateRow(row.id, 'material', e.target.value)} onKeyDown={e => handleKeyDown(e, i)} className={`w-full bg-transparent outline-none focus:bg-[#fffde7] focus:ring-1 focus:ring-[#ffd600] px-1 font-bold ${["342", "381", "3541", "4512", "9920"].includes(row.material) ? "text-red-500" : row.material.trim() === "" ? "bg-red-100 placeholder:text-red-600" : "text-blue-700"}`} placeholder={row.material.trim() === "" ? "FALTA" : ""} /></td>
                   <td className="p-1"><input type="text" value={row.desc} onChange={e => updateRow(row.id, 'desc', e.target.value)} className="w-full bg-transparent outline-none focus:bg-[#fffde7] focus:ring-1 focus:ring-[#ffd600] px-1" /></td>
                   <td className="p-1"><input type="text" value={row.cant} onChange={e => updateRow(row.id, 'cant', e.target.value)} className="w-full bg-transparent outline-none focus:bg-[#fffde7] focus:ring-1 focus:ring-[#ffd600] px-1 text-right" /></td>
                   <td className="p-1"><input type="text" value={row.unidad} onChange={e => updateRow(row.id, 'unidad', e.target.value)} className="w-full bg-transparent outline-none focus:bg-[#fffde7] focus:ring-1 focus:ring-[#ffd600] px-1" /></td>
@@ -1941,9 +1941,10 @@ export default function App() {
                     >
                     {row.map((cell, j) => {
                       const header = parsedData.headers[j].toLowerCase();
-                      const isCode = header.includes("cód") || header.includes("ref") || header === "producto" || header === "artículo";
+                      const isCode = header.includes("cód") || header.includes("ref") || header === "producto" || header === "artículo" || header === "ean";
                       const needsMod = isCode && cell.trim().startsWith("7");
                       const isSpecialCode = isCode && ["342", "381", "3541", "4512", "9920"].includes(cell.trim());
+                      const isMissingCode = isCode && cell.trim() === "";
 
                       return (
                         <td key={j} className="p-0 border-r border-gray-100 last:border-r-0 text-gray-600 focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-blue-50">
@@ -1971,10 +1972,11 @@ export default function App() {
                               }
                             }}
                             className={`w-full h-full p-3 bg-transparent outline-none min-w-[80px] transition-colors ${
+                              isMissingCode ? 'bg-red-100 placeholder:text-red-600 placeholder:font-bold' :
                               needsMod ? 'bg-red-50 text-red-700 font-bold placeholder:text-red-400 placeholder:font-normal' : 
                               (isSpecialCode ? 'text-red-500 font-bold' : '')
                             }`}
-                            placeholder={needsMod ? "Modificar código..." : (j === 0 ? "Sin código" : "")}
+                            placeholder={isMissingCode ? "FALTA CÓDIGO" : needsMod ? "Modificar código..." : ""}
                           />
                         </td>
                       );
