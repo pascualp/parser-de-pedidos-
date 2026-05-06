@@ -111,7 +111,7 @@ function looksLikeTotalsOrFooter(line: string){
   return /Subtotal|Base Imponible|Importe Total|Euros|Base imponible|IVA total|Total pedido|HOJA DE PEDIDO|DESCRIPCION|Depto\./i.test(line);
 }
 function looksLikeTrashCommon(line: string){
-  return /^(Pedido\b|^\d+\s*\/\s*\d+\s*$|^\d+\s+de\s+\d+$|^\d+\s+-K-)/i.test(line);
+  return /^(Pedido\b|\d+\s*\/\s*\d+\s*$|\d+\s+de\s+\d+$|\d+\s+-K-$)/i.test(line);
 }
 function normWS(s: string){ return (s ?? "").replace(/\s+/g, " ").trim(); }
 
@@ -818,14 +818,14 @@ function looksLikeTrashOLIVIA(line: string) {
     || /^\d{2}\/\d{2}\/\d{4}$/.test(line);
 }
 
-function parseOLIVIA(line: string): ParseResult {
+async function parseOLIVIA(line: string): Promise<ParseResult> {
   const original = line;
   line = normWS(line);
   const match = line.match(/^(.*?)\s+(\d+(?:[.,]\d+)?)\s+([A-Za-z.]+)$/);
   if (!match) return { ok: false, original, reason: "No coincide con formato OLIVIA" };
   
   const desc = match[1];
-  const code = getSavedCode(desc, "OLIVIA");
+  const code = await getSavedCode(desc, "OLIVIA");
   
   return { ok: true, row: [code, desc, stripDot00(match[2]), match[3]], original };
 }
@@ -837,7 +837,7 @@ function looksLikeTrashSERUNION(line: string) {
     || /spairal/i.test(line);
 }
 
-function parseSERUNION(line: string): ParseResult {
+async function parseSERUNION(line: string): Promise<ParseResult> {
   const original = line;
   line = normWS(line);
   
@@ -892,7 +892,7 @@ function parseSERUNION(line: string): ParseResult {
     um = umCantMatch[2];
   }
   
-  if (!code) code = getSavedCode(desc, "SERUNION");
+  if (!code) code = await getSavedCode(desc, "SERUNION");
   
   return { ok: true, row: [code, desc, cant, cantUnidad, um, precio, importe], original };
 }
@@ -902,7 +902,7 @@ function looksLikeTrashCLUBMARTHA(line: string) {
   return /^(BON ANY|B57954166|C\/ Cardenal|07007|Illes Balears|España|Pedido de compra|Entrega|CLUB MARTHA|Hotels & Resorts|B57817215|Parc de la Mar|07660|Producto\s+Descripción|Total pedido|\d+\s+de\s+\d+|es club mac)/i.test(line);
 }
 
-function parseCLUBMARTHA(lines: string[]) {
+async function parseCLUBMARTHA(lines: string[]) {
   const rows: string[][] = [];
   const errors: {original: string, reason: string}[] = [];
   
@@ -968,7 +968,7 @@ function parseCLUBMARTHA(lines: string[]) {
       const desc = normWS([...pendingDesc, descAndProv, trailingDesc].join(" "));
       pendingDesc = [];
       
-      if (!codProv) codProv = getSavedCode(desc, "CLUBMARTHA");
+      if (!codProv) codProv = await getSavedCode(desc, "CLUBMARTHA");
       rows.push([producto, desc, codProv, cantidad, um, precio, coste, importe]);
     } else {
       pendingDesc.push(line);
@@ -983,7 +983,7 @@ function looksLikeTrashCAPDEMAR(line: string) {
   return /^(Cap de mar|Pedido|Total|Subtotal|IVA|Base|Fecha|Proveedor|P[áa]gina|Albar[áa]n|Factura|Cliente|Direcci[óo]n|Tel[ée]fono|Email|NIF|CIF|Observaciones|Comentarios)/i.test(line);
 }
 
-function parseCAPDEMAR(lines: string[]) {
+async function parseCAPDEMAR(lines: string[]) {
   const rows: string[][] = [];
   const errors: {original: string, reason: string}[] = [];
 
@@ -1041,7 +1041,7 @@ function parseCAPDEMAR(lines: string[]) {
       const desc = normWS([...pendingDesc, inlineDesc].join(" "));
       pendingDesc = [];
       
-      const savedCode = getSavedCode(desc, "NUEVO_FORMATO");
+      const savedCode = await getSavedCode(desc, "NUEVO_FORMATO");
       const finalCode = savedCode || codigo;
       const finalCodProv = codProv || codigo; // Uses codigo if codProv is empty
       
@@ -1183,8 +1183,8 @@ function autoDetect(text: string){
 async function parseBy(fmt: string, mergedLines: string[]){
   if (fmt === "NIUUT") return parseNIUUT(mergedLines);
   if (fmt === "H24") return parseH24(mergedLines);
-  if (fmt === "CAPDEMAR") return parseCAPDEMAR(mergedLines);
-  if (fmt === "CLUBMARTHA") return parseCLUBMARTHA(mergedLines);
+  if (fmt === "CAPDEMAR") return await parseCAPDEMAR(mergedLines);
+  if (fmt === "CLUBMARTHA") return await parseCLUBMARTHA(mergedLines);
 
   const rows: string[][] = [];
   const errors: {original: string, reason: string}[] = [];
@@ -1219,18 +1219,23 @@ function OccidentalParser() {
     centro: "Centro 2307 Occidental Playa de Palma",
     almacen: "Almacén 2081 COCINA (Propio)"
   });
-  const [memoria, setMemoria] = useState<Record<string, string>>(() => {
-    try { return JSON.parse(localStorage.getItem('misCodigosGuardados') || '{}'); }
-    catch { return {}; }
-  });
+  const [memoria, setMemoria] = useState<Record<string, string>>({});
 
-  const procesar = () => {
+  useEffect(() => {
+    // Load local cache if needed, but we'll prefer Firestore
+    const saved = localStorage.getItem('misCodigosGuardados');
+    if (saved) {
+      try { setMemoria(JSON.parse(saved)); } catch { setMemoria({}); }
+    }
+  }, []);
+
+  const procesar = async () => {
     const lines = inputData.split('\n');
     const newRows: any[] = [];
     let currentRowsCount = rows.length;
 
-    lines.forEach(line => {
-      if (line.trim() === "") return;
+    for (const line of lines) {
+      if (line.trim() === "") continue;
       let parts = line.trim().split(/\s+/);
       let pos, fecha, material, cant, desc, unidad, precio, importe, imp;
 
@@ -1244,32 +1249,41 @@ function OccidentalParser() {
           const matchCant = line.match(/[0-9]+,[0-9]+$/);
           cant = matchCant ? matchCant[0] : "";
           
-          material = memoria[desc.toUpperCase()] || ""; 
+          // Try Firebase FIRST, then fall back to local mem
+          const dbCode = await getSavedCode(desc, "NUEVO_FORMATO"); 
+          material = dbCode || memoria[desc.toUpperCase()] || ""; 
           
           currentRowsCount++;
           pos = currentRowsCount * 10;
-          fecha = "18.12.2025"; 
+          fecha = new Date().toLocaleDateString('es-ES'); 
           unidad = "Kilogramo"; precio = "0,00"; importe = "0,00"; imp = "4";
       }
       newRows.push({ id: Math.random().toString(), pos, fecha, material, desc, cant, unidad, precio, importe, imp });
-    });
+    }
     setRows([...rows, ...newRows]);
     setInputData("");
   };
 
-  const updateRow = (id: string, field: string, value: string) => {
-    setRows(rows.map(r => {
+  const updateRow = async (id: string, field: string, value: string) => {
+    const nextRows = rows.map(r => {
       if (r.id === id) {
-        const newRow = { ...r, [field]: value };
-        if (field === 'material' && newRow.desc && value) {
-          const newMemoria = { ...memoria, [newRow.desc.toUpperCase().trim()]: value.trim() };
-          setMemoria(newMemoria);
-          localStorage.setItem('misCodigosGuardados', JSON.stringify(newMemoria));
-        }
-        return newRow;
+        return { ...r, [field]: value };
       }
       return r;
-    }));
+    });
+    setRows(nextRows);
+
+    if (field === 'material') {
+      const row = nextRows.find(r => r.id === id);
+      if (row && row.desc && value) {
+        // Save to Firebase
+        await saveCode(row.desc, value, "NUEVO_FORMATO");
+        // Also update local mem for legacy
+        const newMemoria = { ...memoria, [row.desc.toUpperCase().trim()]: value.trim() };
+        setMemoria(newMemoria);
+        localStorage.setItem('misCodigosGuardados', JSON.stringify(newMemoria));
+      }
+    }
   };
 
   const removeRow = (id: string) => {
@@ -1441,55 +1455,71 @@ export default function App() {
   };
 
   const handleParse = async () => {
-    const text = input || "";
-    const fmt = format === "AUTO" ? autoDetect(text) : format;
-    const lines = text.split(/\r?\n/);
-    const merged = joinBrokenLines(lines, fmt);
-    const { rows, errors } = await parseBy(fmt, merged);
-    const headers = HEADERS[fmt as keyof typeof HEADERS] || HEADERS.HM;
+    try {
+      const text = input || "";
+      if (!text.trim()) {
+        setStatus({ msg: "Pega el contenido del pedido primero.", type: "warn" });
+        return;
+      }
+      
+      const fmt = format === "AUTO" ? autoDetect(text) : format;
+      const lines = text.split(/\r?\n/);
+      const merged = joinBrokenLines(lines, fmt);
+      
+      const parsedRes = await parseBy(fmt, merged);
+      if (!parsedRes || !parsedRes.rows) {
+        setStatus({ msg: "Error inesperado: No se obtuvieron resultados del parser.", type: "err" });
+        return;
+      }
+      
+      const { rows, errors } = parsedRes;
+      const headers = HEADERS[fmt as keyof typeof HEADERS] || HEADERS.HM;
 
-    // Inject saved codes forcefully to ensure they persist across parses
-    const [cCol, dCol] = getCodeDescColumns(fmt);
-    if (cCol !== -1 && dCol !== -1) {
-      await Promise.all(rows.map(async row => {
-        const desc = row[dCol];
-        if (desc) {
-          const saved = await getSavedCode(desc, fmt);
-          if (saved) row[cCol] = saved;
-        }
-      }));
-    }
-
-    // Auto-calculate for 0.250G items
-    const cantIdx = headers.findIndex(h => /^(cant\.?|cantidad|unidades)$/i.test(h));
-    if (cantIdx !== -1) {
-      rows.forEach(row => {
-        const fullText = row.join(" ").toUpperCase();
-        if (/(0[.,]250\s*(?:G|KG)\b|250\s*G\b)/i.test(fullText)) {
-          const rawCant = row[cantIdx];
-          const hasComma = rawCant.includes(",");
-          // Handle standard ES number format (e.g., "1.234,56" or "10,00" or simple "10.00")
-          const normalized = rawCant.replace(/\./g, "").replace(",", ".");
-          const parsedCant = parseFloat(normalized);
-          if (!isNaN(parsedCant) && parsedCant !== 0) {
-            const calculated = parsedCant / 0.250;
-            row[cantIdx] = Number.isInteger(calculated) 
-              ? calculated.toString() 
-              : calculated.toFixed(2).replace(".", hasComma ? "," : ".");
+      // Inject saved codes forcefully
+      const [cCol, dCol] = getCodeDescColumns(fmt);
+      if (cCol !== -1 && dCol !== -1) {
+        await Promise.all(rows.map(async row => {
+          const desc = row[dCol];
+          if (desc) {
+            const saved = await getSavedCode(desc, fmt);
+            if (saved) row[cCol] = saved;
           }
-        }
-      });
-    }
+        }));
+      }
 
-    setParsedData({ headers, rows, errors, fmt });
-    setColWidths(headers.map(() => 150));
+      // Auto-calculate for 0.250G items
+      const cantIdx = headers.findIndex(h => /^(cant\.?|cantidad|unidades)$/i.test(h));
+      if (cantIdx !== -1) {
+        rows.forEach(row => {
+          const fullText = row.join(" ").toUpperCase();
+          if (/(0[.,]250\s*(?:G|KG)\b|250\s*G\b)/i.test(fullText)) {
+            const rawCant = row[cantIdx];
+            const hasComma = rawCant.includes(",");
+            const normalized = rawCant.replace(/\./g, "").replace(",", ".");
+            const parsedCant = parseFloat(normalized);
+            if (!isNaN(parsedCant) && parsedCant !== 0) {
+              const calculated = parsedCant / 0.250;
+              row[cantIdx] = Number.isInteger(calculated) 
+                ? calculated.toString() 
+                : calculated.toFixed(2).replace(".", hasComma ? "," : ".");
+            }
+          }
+        });
+      }
 
-    if (!rows.length && !errors.length) {
-      setStatus({ msg: "No se pudo parsear nada.", type: "err" });
-    } else if (errors.length) {
-      setStatus({ msg: `${fmt}: ${rows.length} filas válidas, ${errors.length} con error.`, type: "warn" });
-    } else {
-      setStatus({ msg: `${fmt}: ${rows.length} filas. Sin errores.`, type: "ok" });
+      setParsedData({ headers, rows, errors, fmt });
+      setColWidths(headers.map(() => 150));
+
+      if (!rows.length && !errors.length) {
+        setStatus({ msg: "No se pudo detectar ningún producto válido en este texto.", type: "err" });
+      } else if (errors.length) {
+        setStatus({ msg: `${fmt}: ${rows.length} filas procesadas, ${errors.length} fallos detectados.`, type: "warn" });
+      } else {
+        setStatus({ msg: `${fmt}: ${rows.length} productos listos.`, type: "ok" });
+      }
+    } catch (err) {
+      console.error("Critical parse error:", err);
+      setStatus({ msg: "Error crítico al procesar: " + (err instanceof Error ? err.message : String(err)), type: "err" });
     }
   };
 
