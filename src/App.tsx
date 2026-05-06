@@ -4,8 +4,10 @@ import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
 export const auth = getAuth();
+
+const codeCache: Record<string, string> = {};
 
 import React, { useState, useEffect } from 'react';
 import { ChevronRight, ChevronDown, Copy, Trash2, Play, Settings2, CheckCircle2, AlertTriangle, XCircle, FileText, ClipboardList, Printer } from 'lucide-react';
@@ -34,12 +36,17 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 // ================= MEMORIA DE CÓDIGOS =================
 async function getSavedCode(desc: string, fmt: string): Promise<string> {
+  const key = `${fmt}_${desc.toUpperCase().trim()}`;
+  if (codeCache[key]) return codeCache[key];
+
   try {
     const sanitizedDesc = desc.toUpperCase().trim().replace(/\//g, '_');
     const docRef = doc(db, 'codeMappings', `${fmt}_${sanitizedDesc}`);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
-      return docSnap.data().code;
+      const code = docSnap.data().code;
+      codeCache[key] = code;
+      return code;
     }
   } catch (e) {
     console.error("Error fetching code:", e);
@@ -49,6 +56,9 @@ async function getSavedCode(desc: string, fmt: string): Promise<string> {
 
 async function saveCode(desc: string, code: string, fmt: string) {
   if (!desc || !code.trim()) return;
+  const key = `${fmt}_${desc.toUpperCase().trim()}`;
+  codeCache[key] = code;
+
   try {
     const sanitizedDesc = desc.toUpperCase().trim().replace(/\//g, '_');
     const docRef = doc(db, 'codeMappings', `${fmt}_${sanitizedDesc}`);
@@ -68,6 +78,7 @@ function getCodeDescColumns(fmt: string): [number, number] {
   if (fmt === "LAGARDERE") return [1, 2];
   if (["CLUBMARTHA", "GARONDA", "BIOEN", "CAPDEMAR"].includes(fmt)) return [2, 1];
   if (fmt === "FRUTAS") return [2, 0];
+  if (fmt === "BONANZA" || fmt === "FLAMINGO") return [-1, 0];
   return [0, 1];
 }
 
@@ -1186,10 +1197,8 @@ async function parseBy(fmt: string, mergedLines: string[]){
   if (fmt === "CAPDEMAR") return await parseCAPDEMAR(mergedLines);
   if (fmt === "CLUBMARTHA") return await parseCLUBMARTHA(mergedLines);
 
-  const rows: string[][] = [];
-  const errors: {original: string, reason: string}[] = [];
-  for (const line of mergedLines){
-    const p = await (
+  const results = await Promise.all(mergedLines.map(async line => {
+    return await (
       (fmt === "AMADIP") ? parseAMADIP(line) :
       (fmt === "CARIBBEAN") ? parseCAR(line) :
       (fmt === "FLAMINGO") ? parseFLA(line) :
@@ -1205,7 +1214,12 @@ async function parseBy(fmt: string, mergedLines: string[]){
       (fmt === "NUEVO_FORMATO") ? parseNUEVO_FORMATO(line) :
       parseHM(line)
     );
+  }));
 
+  const rows: string[][] = [];
+  const errors: {original: string, reason: string}[] = [];
+  
+  for (const p of results) {
     if (p.ok) rows.push(p.row);
     else errors.push({ original: p.original, reason: (p as any).reason });
   }
@@ -1234,8 +1248,8 @@ function OccidentalParser() {
     const newRows: any[] = [];
     let currentRowsCount = rows.length;
 
-    for (const line of lines) {
-      if (line.trim() === "") continue;
+    const results = await Promise.all(lines.map(async line => {
+      if (line.trim() === "") return null;
       let parts = line.trim().split(/\s+/);
       let pos, fecha, material, cant, desc, unidad, precio, importe, imp;
 
@@ -1258,9 +1272,11 @@ function OccidentalParser() {
           fecha = new Date().toLocaleDateString('es-ES'); 
           unidad = "Kilogramo"; precio = "0,00"; importe = "0,00"; imp = "4";
       }
-      newRows.push({ id: Math.random().toString(), pos, fecha, material, desc, cant, unidad, precio, importe, imp });
-    }
-    setRows([...rows, ...newRows]);
+      return { id: Math.random().toString(), pos, fecha, material, desc, cant, unidad, precio, importe, imp };
+    }));
+
+    const validNewRows = results.filter(r => r !== null) as any[];
+    setRows([...rows, ...validNewRows]);
     setInputData("");
   };
 
@@ -1454,8 +1470,11 @@ export default function App() {
     localStorage.setItem(LS_FOLD_KEY, next ? "1" : "0");
   };
 
+  const [isParsing, setIsParsing] = useState(false);
+
   const handleParse = async () => {
     try {
+      setIsParsing(true);
       const text = input || "";
       if (!text.trim()) {
         setStatus({ msg: "Pega el contenido del pedido primero.", type: "warn" });
@@ -1520,6 +1539,8 @@ export default function App() {
     } catch (err) {
       console.error("Critical parse error:", err);
       setStatus({ msg: "Error crítico al procesar: " + (err instanceof Error ? err.message : String(err)), type: "err" });
+    } finally {
+      setIsParsing(false);
     }
   };
 
@@ -1815,10 +1836,15 @@ export default function App() {
           <div className="flex flex-wrap items-center gap-3">
             <button 
               onClick={handleParse}
-              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+              disabled={isParsing}
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Play className="w-4 h-4" />
-              Parsear
+              {isParsing ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+              ) : (
+                <Play className="w-4 h-4" />
+              )}
+              {isParsing ? "Procesando..." : "Parsear"}
             </button>
             <button 
               onClick={handleCopyFull}
