@@ -917,24 +917,25 @@ async function parseCLUBMARTHA(lines: string[]) {
   const rows: string[][] = [];
   const errors: {original: string, reason: string}[] = [];
   
-  const tailRegex = /\s+(\d+(?:[.,]\d+)?)\s+(.+?)\s+(\S+)\s+(\S+)\s+(\d+(?:[.,]\d+)?)(?:\s+([a-zA-Z\u00C0-\u017F].*))?$/;
+  // Robust regex: matches Quantity (2 decimals), UM (text), Precio, optional Coste, Total (2 decimals)
+  const tailRegex = /\s+(\d+[.,]\d{2})\s+(.+?)\s+(\d+[.,]\d{2,5})(?:\s+(\d+[.,]\d{2,5}))?\s+(\d+[.,]\d{2})\s*$/;
   
   let pendingDesc: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
     const original = lines[i];
     let line = normWS(original);
+    if (!line) continue;
     
-    if (/^\d+\s+de\s+\d+/.test(line)) continue;
+    if (looksLikeTotalsOrFooter(line) || looksLikeTrashCommon(line) || looksLikeTrashCLUBMARTHA(line)) continue;
     
     const m = line.match(tailRegex);
     if (m) {
       const cantidad = stripDot00(m[1]);
       const um = m[2];
       const precio = m[3].replace(/[^\d.,]/g, '');
-      const coste = m[4].replace(/[^\d.,]/g, '');
+      const coste = m[4] ? m[4].replace(/[^\d.,]/g, '') : precio;
       const importe = m[5];
-      const trailingDesc = m[6] ? " " + m[6].trim() : "";
       
       const head = line.replace(tailRegex, "").trim();
       
@@ -942,46 +943,30 @@ async function parseCLUBMARTHA(lines: string[]) {
       let descAndProv = head;
       let codProv = "";
       
-      const headMatch = head.match(/^(\d{6,})\s+(.*)$/);
+      const headMatch = head.match(/^(\d{6,11})\s+(.*)$/);
       if (headMatch) {
          producto = headMatch[1];
          descAndProv = headMatch[2];
-      } else {
-         if (pendingDesc.length > 0) {
-             const pd0Match = pendingDesc[0].match(/^(\d{6,})\s+(.*)$/);
-             if (pd0Match) {
-                 producto = pd0Match[1];
-                 pendingDesc[0] = pd0Match[2];
-             }
-         }
       }
       
-      if (/^\d+$/.test(descAndProv)) {
-          codProv = descAndProv;
+      if (/^\s*\d+\s*$/.test(descAndProv)) {
+          codProv = descAndProv.trim();
           descAndProv = "";
       } else {
           const provMatch = descAndProv.match(/^(.*?)\s+(\d+)$/);
           if (provMatch) {
             descAndProv = provMatch[1];
             codProv = provMatch[2];
-          } else if (!descAndProv.trim()) {
-            if (pendingDesc.length > 0) {
-              const lastIndex = pendingDesc.length - 1;
-              const matchLast = pendingDesc[lastIndex].match(/^(.*?)\s+(\d+)$/);
-              if (matchLast) {
-                 pendingDesc[lastIndex] = matchLast[1];
-                 codProv = matchLast[2];
-              }
-            }
           }
       }
       
-      const desc = normWS([...pendingDesc, descAndProv, trailingDesc].join(" "));
+      const desc = normWS([...pendingDesc, descAndProv].join(" "));
       pendingDesc = [];
       
       if (!codProv) codProv = await getSavedCode(desc, "CLUBMARTHA");
       rows.push([producto, desc, codProv, cantidad, um, precio, coste, importe]);
     } else {
+      // If it doesn't match the numbers pattern, it's likely a continuation of a description
       pendingDesc.push(line);
     }
   }
@@ -1005,14 +990,14 @@ async function parseCAPDEMAR(lines: string[]) {
     if (!line) continue;
     if (looksLikeTotalsOrFooter(line) || looksLikeTrashCommon(line) || looksLikeTrashCAPDEMAR(line)) continue;
 
-    const tailRegex = /(?:\s+|^)(\d+(?:[.,]\d+)?)\s+(.+?)\s+(\S+)\s+(\S+)\s+(\d+(?:[.,]\d+)?)$/;
+    const tailRegex = /\s+(\d+[.,]\d{2})\s+(.+?)\s+(\d+[.,]\d{2,5})(?:\s+(\d+[.,]\d{2,5}))?\s+(\d+[.,]\d{2})\s*$/;
     const m = line.match(tailRegex);
 
     if (m) {
       const cantidad = m[1];
       const um = m[2];
       const precio = m[3].replace(/[^\d.,]/g, '');
-      const precio2 = m[4].replace(/[^\d.,]/g, '');
+      const precio2 = m[4] ? m[4].replace(/[^\d.,]/g, '') : precio;
       const importe = m[5];
 
       const head = line.replace(tailRegex, "").trim();
@@ -1174,8 +1159,8 @@ function autoDetect(text: string){
   if (/Mar Hotels/i.test(text) || /\bCoste\s+unitario\s+Descuento\b/i.test(text)) return "MARHOTELES";
   if (/olivia hotelscollection/i.test(text) || /HOJA DE PEDIDO POR CENTRO/i.test(text)) return "OLIVIA";
   if (/SERUNION/i.test(text) || /spairal/i.test(text)) return "SERUNION";
-  if (/CLUB MARTHA/i.test(text) || /Hotels & Resorts Blue Sea/i.test(text) || /club mac/i.test(text) || /mac hotel/i.test(text) || /^\s*\d+\s+.*\s+\d+(?:[.,]\d+)?\s+.+?\s+\S+\s+\S+\s+\d+(?:[.,]\d+)?\s*$/m.test(text)) return "CLUBMARTHA";
-  if (/cap de mar/i.test(text) || /mac hotel/i.test(text) || /^\s*[A-Z0-9]+(?:\s+.*)?\s+\d+\s+\d+(?:[.,]\d+)?\s+[A-Za-z.\/]+\s+\d+(?:[.,]\d+)?\s+\d+(?:[.,]\d+)?\s+\d+(?:[.,]\d+)?\s*$/m.test(text)) return "CAPDEMAR";
+  if (/CLUB MARTHA/i.test(text) || /Hotels & Resorts Blue Sea/i.test(text) || /club mac/i.test(text) || /mac hotel/i.test(text) || /^\s*\d+\s+.*\s+\d+[.,]\d{2}\s+.+?\s+\d+[.,]\d{2,5}\s+/m.test(text)) return "CLUBMARTHA";
+  if (/cap de mar/i.test(text) || /^\s*[A-Z0-9]+(?:\s+.*)?\s+\d+[.,]\d{2}\s+[A-Za-z.\/]+\s+\d+[.,]\d{2}/m.test(text)) return "CAPDEMAR";
   if (/bioen/i.test(text)) return "BIOEN";
   if (/^\s*\d{13}\s+\d{6}\s+/m.test(text)) return "LAGARDERE";
   if (/\t\d+\t\d+\s+|\s{2,}\d+\s{2,}\d+\s+/.test(text)) return "FRUTAS";
