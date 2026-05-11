@@ -1155,12 +1155,12 @@ function autoDetect(text: string){
   if (/\s%\s*\d+\s+\d+,\d{2}\s*$/m.test(text)) return "AMADIP";
   if (/\d+,\d{4}/.test(text)) return "HM";
   if (RE_FLA_TAIL.test(text)) return "FLAMINGO";
-  if (/\s\d+,\d{2}\s+[A-Za-zÁÉÍÓÚÜÑ.]{1,8}\s*$/m.test(text)) return "BONANZA";
+  if (/[ \t]\d+,\d{2}[ \t]+[A-Za-zÁÉÍÓÚÜÑ.]{1,8}[ \t]*$/m.test(text)) return "BONANZA";
   if (/Mar Hotels/i.test(text) || /\bCoste\s+unitario\s+Descuento\b/i.test(text)) return "MARHOTELES";
   if (/olivia hotelscollection/i.test(text) || /HOJA DE PEDIDO POR CENTRO/i.test(text)) return "OLIVIA";
   if (/SERUNION/i.test(text) || /spairal/i.test(text)) return "SERUNION";
-  if (/CLUB MARTHA/i.test(text) || /Hotels & Resorts Blue Sea/i.test(text) || /club mac/i.test(text) || /mac hotel/i.test(text) || /^\s*\d+\s+.*\s+\d+(?:[.,]\d+)?\s+.+?\s+\S+\s+\S+\s+\d+(?:[.,]\d+)?\s*$/m.test(text)) return "CLUBMARTHA";
-  if (/cap de mar/i.test(text) || /^\s*[A-Z0-9]+(?:\s+.*)?\s+\d+(?:[.,]\d+)?\s+[A-Za-z.\/]+\s+\d+(?:[.,]\d+)?\s+\d+(?:[.,]\d+)?\s+\d+(?:[.,]\d+)?\s*$/m.test(text)) return "CAPDEMAR";
+  if (/CLUB MARTHA/i.test(text) || /Hotels & Resorts Blue Sea/i.test(text) || /club mac/i.test(text) || /mac hotel/i.test(text) || /^\s*\d+\s+.*\s+\d+[.,]\d{2}\s+.+?\s+\d+[.,]\d{2,5}\s+/m.test(text)) return "CLUBMARTHA";
+  if (/cap de mar/i.test(text) || /^\s*[A-Z0-9]+(?:\s+.*)?\s+\d+[.,]\d{2}\s+[A-Za-z.\/]+\s+\d+[.,]\d{2}/m.test(text)) return "CAPDEMAR";
   if (/bioen/i.test(text)) return "BIOEN";
   if (/^\s*\d{13}\s+\d{6}\s+/m.test(text)) return "LAGARDERE";
   if (/\t\d+\t\d+\s+|\s{2,}\d+\s{2,}\d+\s+/.test(text)) return "FRUTAS";
