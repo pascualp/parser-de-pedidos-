@@ -1491,26 +1491,6 @@ export default function App() {
         }));
       }
 
-      // Auto-calculate for 0.250G items
-      const cantIdx = headers.findIndex(h => /^(cant\.?|cantidad|unidades)$/i.test(h));
-      if (cantIdx !== -1) {
-        rows.forEach(row => {
-          const fullText = row.join(" ").toUpperCase();
-          if (/(0[.,]250\s*(?:G|KG)\b|250\s*G\b)/i.test(fullText)) {
-            const rawCant = row[cantIdx];
-            const hasComma = rawCant.includes(",");
-            const normalized = rawCant.replace(/\./g, "").replace(",", ".");
-            const parsedCant = parseFloat(normalized);
-            if (!isNaN(parsedCant) && parsedCant !== 0) {
-              const calculated = parsedCant / 0.250;
-              row[cantIdx] = Number.isInteger(calculated) 
-                ? calculated.toString() 
-                : calculated.toFixed(2).replace(".", hasComma ? "," : ".");
-            }
-          }
-        });
-      }
-
       setParsedData({ headers, rows, errors, fmt });
       setColWidths(headers.map(() => 150));
 
