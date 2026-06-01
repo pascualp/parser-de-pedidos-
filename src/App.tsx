@@ -1397,7 +1397,7 @@ function OccidentalParser() {
                 <tr key={row.id} className="border-b border-gray-200 hover:bg-gray-50">
                   <td className="p-1"><input type="text" value={row.pos} onChange={e => updateRow(row.id, 'pos', e.target.value)} className="w-full bg-transparent outline-none focus:bg-[#fffde7] focus:ring-1 focus:ring-[#ffd600] px-1" /></td>
                   <td className="p-1"><input type="text" value={row.fecha} onChange={e => updateRow(row.id, 'fecha', e.target.value)} className="w-full bg-transparent outline-none focus:bg-[#fffde7] focus:ring-1 focus:ring-[#ffd600] px-1" /></td>
-                  <td className="p-1"><input id={`material-${i}`} type="text" value={row.material} onChange={e => updateRow(row.id, 'material', e.target.value)} onKeyDown={e => handleKeyDown(e, i)} className={`w-full bg-transparent outline-none focus:bg-[#fffde7] focus:ring-1 focus:ring-[#ffd600] px-1 font-bold ${["342", "381", "3541", "4512", "9920"].includes(row.material) ? "text-red-500" : row.material.trim() === "" ? "bg-red-100 placeholder:text-red-600" : "text-blue-700"}`} placeholder={row.material.trim() === "" ? "FALTA" : ""} /></td>
+                  <td className="p-1"><input id={`material-${i}`} type="text" value={row.material} onChange={e => updateRow(row.id, 'material', e.target.value)} onKeyDown={e => handleKeyDown(e, i)} className={`w-full bg-transparent outline-none focus:bg-[#fffde7] focus:ring-1 focus:ring-[#ffd600] px-1 font-bold ${["30", "342", "381", "1708", "3541", "4512", "9920"].includes(row.material) ? "text-red-500" : row.material.trim() === "" ? "bg-red-100 placeholder:text-red-600" : "text-blue-700"}`} placeholder={row.material.trim() === "" ? "FALTA" : ""} /></td>
                   <td className="p-1"><input type="text" value={row.desc} onChange={e => updateRow(row.id, 'desc', e.target.value)} className="w-full bg-transparent outline-none focus:bg-[#fffde7] focus:ring-1 focus:ring-[#ffd600] px-1" /></td>
                   <td className="p-1"><input type="text" value={row.cant} onChange={e => updateRow(row.id, 'cant', e.target.value)} className="w-full bg-transparent outline-none focus:bg-[#fffde7] focus:ring-1 focus:ring-[#ffd600] px-1 text-right" /></td>
                   <td className="p-1"><input type="text" value={row.unidad} onChange={e => updateRow(row.id, 'unidad', e.target.value)} className="w-full bg-transparent outline-none focus:bg-[#fffde7] focus:ring-1 focus:ring-[#ffd600] px-1" /></td>
@@ -1923,7 +1923,7 @@ export default function App() {
                       const header = parsedData.headers[j].toLowerCase();
                       const isCode = header.includes("cód") || header.includes("ref") || header === "producto" || header === "artículo" || header === "ean";
                       const needsMod = isCode && cell.trim().startsWith("7");
-                      const isSpecialCode = isCode && ["342", "381", "3541", "4512", "9920"].includes(cell.trim());
+                      const isSpecialCode = isCode && ["30", "342", "381", "1708", "3541", "4512", "9920"].includes(cell.trim());
                       const isMissingCode = isCode && cell.trim() === "";
 
                       return (
