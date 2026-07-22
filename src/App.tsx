@@ -27,6 +27,7 @@ const HEADERS = {
   CAPDEMAR: ["Código", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Precio 2", "Importe"],
   GARONDA: ["Producto", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Coste unitario", "Importe"],
   BIOEN: ["Código", "Descripción", "Cód. proveedor", "Cantidad", "U. M.", "Precio", "Coste", "Importe"],
+  ONA: ["Código", "Descripción", "Cód. proveedor", "Cantidad", "Unidad", "Coste unit. directo", "Importe de línea"],
   FRUTAS: ["Descripción", "Cód. Prov.", "Código", "Cantidad", "Unidad"],
   LAGARDERE: ["EAN", "Código", "Descripción", "Cantidad", "Unidad"],
   NUEVO_FORMATO: ["Código", "Descripción", "Precio", "Unidad", "Cantidad"]
@@ -103,6 +104,7 @@ const DEFAULT_COPY_CFG = {
   cfgCLUBMARTHA: "Producto\nDescripción\nCód. proveedor\nCantidad\nU. M.\nPrecio\nImporte",
   cfgCAPDEMAR: "Código\nDescripción\nCód. proveedor\nCantidad\nU. M.\nPrecio\nImporte",
   cfgBIOEN: "Código\nDescripción\nCód. proveedor\nCantidad\nU. M.\nPrecio\nCoste\nImporte",
+  cfgONA: "Código\nDescripción\nCód. proveedor\nCantidad\nUnidad\nCoste unit. directo\nImporte de línea",
   cfgLAGARDERE: "EAN\nCódigo\nDescripción\nCantidad\nUnidad",
   cfgNUEVO_FORMATO: "Código\nDescripción\nPrecio\nUnidad\nCantidad",
   includeHeader: true,
@@ -1054,6 +1056,13 @@ async function parseCAPDEMAR(lines: string[]) {
   return { rows, errors };
 }
 
+// ================= ONA =================
+function parseONA(line: string){
+  const m = line.match(/^(\d+)\s+(.+?)\s+(\d+(?:[.,]\d+)?)\s+([A-Za-z]+.*?)\s+(\d+(?:[.,]\d+)?)\s+(\d+)\s+(\d+(?:[.,]\d+)?)$/);
+  if (!m) return { ok: false, original: line, reason: "No coincide con formato ONA" };
+  return { ok: true, row: [m[1], m[2], m[1], m[3], m[4], m[5], m[7]], original: line };
+}
+
 // ================= JOIN BROKEN LINES =================
 function joinBrokenLines(lines: string[], fmt: string){
   const out: string[] = [];
@@ -1137,6 +1146,7 @@ function joinBrokenLines(lines: string[], fmt: string){
       (fmt === "CLUBMARTHA") ? (/^\d+\s+[A-Za-z]/.test(t0) || (/^[A-Za-z]/.test(t0) && /\b\d{6,10}\b/.test(t0))) :
       (fmt === "FRUTAS") ? true :
       (fmt === "LAGARDERE") ? /^\d{13}\s+\d{6}\s+/.test(t0) :
+      (fmt === "ONA") ? /^\d+\s+[A-Za-z]/.test(t0) :
       ( /^\d+\s+\d+\s+/.test(t0) || /^\d{9}\s+/.test(t0) || RE_FLA_TAIL.test(t0) );
 
     if (starter) out.push(t0);
@@ -1165,6 +1175,7 @@ function autoDetect(text: string){
   if (/^\s*\d{13}\s+\d{6}\s+/m.test(text)) return "LAGARDERE";
   if (/\t\d+\t\d+\s+|\s{2,}\d+\s{2,}\d+\s+/.test(text)) return "FRUTAS";
   if (/garonda/i.test(text)) return "GARONDA";
+  if (/Importe de\s*línea/i.test(text) || /\bONA HOTEL\b/i.test(text)) return "ONA";
   const textLines = text.split(/\r?\n/).filter(l => l.trim());
   if (textLines.length > 0 && /^\s*\d{9}\s+[A-Za-z]/.test(textLines[0]) && /\s+\d+(?:\.\d+)?\s+[A-Za-z]+\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?$/.test(textLines[0])) {
     return "GARONDA";
@@ -1196,6 +1207,7 @@ async function parseBy(fmt: string, mergedLines: string[]){
       (fmt === "GARONDA") ? parseGARONDA(line) :
       (fmt === "FRUTAS") ? parseFRUTAS(line) :
       (fmt === "LAGARDERE") ? parseLAGARDERE(line) :
+      (fmt === "ONA") ? parseONA(line) :
       (fmt === "NUEVO_FORMATO") ? parseNUEVO_FORMATO(line) :
       parseHM(line)
     );
