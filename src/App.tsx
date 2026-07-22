@@ -39,6 +39,11 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 async function getSavedCode(desc: string, fmt: string): Promise<string> {
   const key = `${fmt}_${desc.toUpperCase().trim()}`;
   if (codeCache[key]) return codeCache[key];
+  const localVal = localStorage.getItem(`code_${key}`);
+  if (localVal) {
+    codeCache[key] = localVal;
+    return localVal;
+  }
 
   try {
     const sanitizedDesc = desc.toUpperCase().trim().replace(/\//g, '_');
@@ -47,6 +52,7 @@ async function getSavedCode(desc: string, fmt: string): Promise<string> {
     if (docSnap.exists()) {
       const code = docSnap.data().code;
       codeCache[key] = code;
+      localStorage.setItem(`code_${key}`, code);
       return code;
     }
   } catch (e) {
@@ -59,6 +65,7 @@ async function saveCode(desc: string, code: string, fmt: string) {
   if (!desc || !code.trim()) return;
   const key = `${fmt}_${desc.toUpperCase().trim()}`;
   codeCache[key] = code;
+  localStorage.setItem(`code_${key}`, code);
 
   try {
     const sanitizedDesc = desc.toUpperCase().trim().replace(/\//g, '_');
@@ -1118,6 +1125,23 @@ function joinBrokenLines(lines: string[], fmt: string){
     return out;
   }
 
+  if (fmt === "ONA") {
+    let cur = "";
+    for (const raw0 of lines) {
+      const t = clean(raw0);
+      if (!t) continue;
+      if (!cur) cur = t;
+      else cur = normWS(cur + " " + t);
+      
+      if (/^(\d+)\s+(.+?)\s+(\d+(?:[.,]\d+)?)\s+([A-Za-z]+.*?)\s+(\d+(?:[.,]\d+)?)\s+(\d+)\s+(\d+(?:[.,]\d+)?)$/.test(cur)) {
+        out.push(cur);
+        cur = "";
+      }
+    }
+    if (cur) out.push(cur);
+    return out;
+  }
+
   if (fmt === "NIUUT" || fmt === "H24" || fmt === "CAPDEMAR" || fmt === "CLUBMARTHA" || fmt === "BIOEN" || fmt === "GARONDA" || fmt === "LAGARDERE" || fmt === "NUEVO_FORMATO") {
     for (const raw0 of lines) {
       const t = clean(raw0);
@@ -1146,7 +1170,6 @@ function joinBrokenLines(lines: string[], fmt: string){
       (fmt === "CLUBMARTHA") ? (/^\d+\s+[A-Za-z]/.test(t0) || (/^[A-Za-z]/.test(t0) && /\b\d{6,10}\b/.test(t0))) :
       (fmt === "FRUTAS") ? true :
       (fmt === "LAGARDERE") ? /^\d{13}\s+\d{6}\s+/.test(t0) :
-      (fmt === "ONA") ? /^\d+\s+[A-Za-z]/.test(t0) :
       ( /^\d+\s+\d+\s+/.test(t0) || /^\d{9}\s+/.test(t0) || RE_FLA_TAIL.test(t0) );
 
     if (starter) out.push(t0);
