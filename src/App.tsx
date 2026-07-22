@@ -79,7 +79,6 @@ function getCodeDescColumns(fmt: string): [number, number] {
   if (fmt === "LAGARDERE") return [1, 2];
   if (["CLUBMARTHA", "GARONDA", "BIOEN", "CAPDEMAR"].includes(fmt)) return [2, 1];
   if (fmt === "FRUTAS") return [2, 0];
-  if (fmt === "BONANZA" || fmt === "FLAMINGO") return [-1, 0];
   return [0, 1];
 }
 
@@ -92,7 +91,7 @@ const DEFAULT_COPY_CFG = {
   cfgAMADIP: "Ref.Prov.\nArtículo\nFormato\nCantidad\nPrecio\nTotal",
   cfgCAR: "Producto\nDescripción\nCantidad\nU. M.",
   cfgFLA: "Código\nDescripción\nCant.",
-  cfgBON: "Descripción\nUnidades\nUnid. medida",
+  cfgBON: "Código\nDescripción\nUnidades\nUnid. medida",
   cfgGARONDA: "Producto\nDescripción\nCód. proveedor\nCantidad\nU. M.\nPrecio\nCoste unitario\nImporte",
   cfgFRUTAS: "Descripción\nCód. Prov.\nCódigo\nCantidad\nUnidad",
   cfgNIU: "Ref Cli.\nDescripción\nCantidad\nU. M.",
@@ -538,7 +537,7 @@ async function parseFLA(line: string): Promise<ParseResult> {
 
 // ================= BONANZA =================
 const BON_UM = new Set(["Ud.","Kg.","KG","UD","CAJA","L","Lt","lt","L."]);
-function parseBON(line: string): ParseResult {
+async function parseBON(line: string): Promise<ParseResult> {
   const original = line;
   line = normWS(line);
   const tokens = line.split(" ");
@@ -552,7 +551,8 @@ function parseBON(line: string): ParseResult {
   }
   const desc = tokens.slice(0, tokens.length - 2).join(" ").trim();
   if (!desc) return { ok:false, original, reason:"Descripción vacía" };
-  return { ok:true, row:[desc, qty, umRaw], original };
+  const code = await getSavedCode(desc, "BONANZA");
+  return { ok:true, row:[code, desc, qty, umRaw], original };
 }
 
 // ================= NIU / UT =================
