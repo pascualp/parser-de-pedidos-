@@ -1552,6 +1552,7 @@ export default function App() {
                    parsedData.fmt === "GARONDA" ? "cfgGARONDA" : 
                    parsedData.fmt === "LAGARDERE" ? "cfgLAGARDERE" : 
                    parsedData.fmt === "NUEVO_FORMATO" ? "cfgNUEVO_FORMATO" : 
+                   parsedData.fmt === "ONA" ? "cfgONA" : 
                    parsedData.fmt === "CAPDEMAR" ? "cfgCAPDEMAR" : "cfgHM";
                    
     const rawWanted = config[fmtKey as keyof typeof config] as string;
@@ -1698,6 +1699,7 @@ export default function App() {
               { id: 'CAPDEMAR', label: 'CAP DE MAR' },
               { id: 'BIOEN', label: 'BIOEN' },
               { id: 'GARONDA', label: 'GARONDA' },
+              { id: 'ONA', label: 'ONA HOTEL' },
               { id: 'FRUTAS', label: 'FRUTAS' },
               { id: 'LAGARDERE', label: 'LAGARDERE' },
               { id: 'NUEVO_FORMATO', label: 'NUEVO FORMATO (VERDE)' },
@@ -1756,6 +1758,7 @@ export default function App() {
                   { key: 'cfgCAPDEMAR', title: 'CAP DE MAR' },
                   { key: 'cfgBIOEN', title: 'BIOEN' },
                   { key: 'cfgGARONDA', title: 'GARONDA' },
+                  { key: 'cfgONA', title: 'ONA HOTEL' },
                   { key: 'cfgFRUTAS', title: 'FRUTAS' },
                   { key: 'cfgLAGARDERE', title: 'LAGARDERE' },
                   { key: 'cfgNUEVO_FORMATO', title: 'NUEVO FORMATO (VERDE)' },
