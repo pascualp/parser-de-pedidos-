@@ -1128,12 +1128,25 @@ function joinBrokenLines(lines: string[], fmt: string){
   if (fmt === "ONA") {
     let cur = "";
     for (const raw0 of lines) {
-      const t = clean(raw0);
+      let t = clean(raw0);
       if (!t) continue;
+      
+      const tl = t.toLowerCase();
+      if (tl.includes("nº descripción") || tl.includes("importe de línea") || /página\s*\d+\s*\/\s*\d+/.test(tl) || /\d{1,2}\s+de\s+[a-z]+\s+de\s+\d{4}/.test(tl)) {
+         continue;
+      }
+      
+      if (!cur && !/^\d+/.test(t)) {
+         continue;
+      }
+
       if (!cur) cur = t;
       else cur = normWS(cur + " " + t);
       
       if (/^(\d+)\s+(.+?)\s+(\d+(?:[.,]\d+)?)\s+([A-Za-z]+.*?)\s+(\d+(?:[.,]\d+)?)\s+(\d+)\s+(\d+(?:[.,]\d+)?)$/.test(cur)) {
+        out.push(cur);
+        cur = "";
+      } else if (cur.split(" ").length > 30) {
         out.push(cur);
         cur = "";
       }
