@@ -30,6 +30,7 @@ const HEADERS = {
   ONA: ["Código", "Descripción", "Cód. proveedor", "Cantidad", "Unidad", "Coste unit. directo", "Importe de línea"],
   FRUTAS: ["Descripción", "Cód. Prov.", "Código", "Cantidad", "Unidad"],
   LAGARDERE: ["EAN", "Código", "Descripción", "Cantidad", "Unidad"],
+  CASTELLDEMAR: ["Código", "Descripción", "Cód. proveedor", "Cantidad", "Unidad"],
   NUEVO_FORMATO: ["Código", "Descripción", "Precio", "Unidad", "Cantidad"]
 };
 
@@ -112,6 +113,7 @@ const DEFAULT_COPY_CFG = {
   cfgBIOEN: "Código\nDescripción\nCód. proveedor\nCantidad\nU. M.\nPrecio\nCoste\nImporte",
   cfgONA: "Código\nDescripción\nCód. proveedor\nCantidad\nUnidad\nCoste unit. directo\nImporte de línea",
   cfgLAGARDERE: "EAN\nCódigo\nDescripción\nCantidad\nUnidad",
+  cfgCASTELLDEMAR: "Código\nDescripción\nCód. proveedor\nCantidad\nUnidad",
   cfgNUEVO_FORMATO: "Código\nDescripción\nPrecio\nUnidad\nCantidad",
   includeHeader: true,
   strictCopy: true
@@ -1063,6 +1065,24 @@ async function parseCAPDEMAR(lines: string[]) {
   return { rows, errors };
 }
 
+// ================= CASTELL DE MAR =================
+async function parseCASTELLDEMAR(line: string): Promise<ParseResult> {
+  const original = line;
+  line = normWS(line);
+  const match = line.match(/^(\S+)\s+(.+?)\s+(\d+)\s+(\d+(?:[.,]\d+)?)\s+(.+)$/);
+  if (!match) return { ok: false, original, reason: "No coincide con formato CASTELL DE MAR" };
+  
+  const code = match[1];
+  const desc = match[2];
+  const codProv = match[3];
+  const cantidad = stripDot00(match[4]);
+  const unidad = match[5];
+
+  const finalCode = await getSavedCode(desc, "CASTELLDEMAR") || code;
+
+  return { ok: true, row: [finalCode, desc, codProv, cantidad, unidad], original };
+}
+
 // ================= ONA =================
 function parseONA(line: string){
   const m = line.match(/^(\d+)\s+(.+?)\s+(\d+(?:[.,]\d+)?)\s+([A-Za-z]+.*?)\s+(\d+(?:[.,]\d+)?)\s+(\d+)\s+(\d+(?:[.,]\d+)?)$/);
@@ -1155,7 +1175,7 @@ function joinBrokenLines(lines: string[], fmt: string){
     return out;
   }
 
-  if (fmt === "NIUUT" || fmt === "H24" || fmt === "CAPDEMAR" || fmt === "CLUBMARTHA" || fmt === "BIOEN" || fmt === "GARONDA" || fmt === "LAGARDERE" || fmt === "NUEVO_FORMATO") {
+  if (fmt === "NIUUT" || fmt === "H24" || fmt === "CAPDEMAR" || fmt === "CLUBMARTHA" || fmt === "BIOEN" || fmt === "GARONDA" || fmt === "LAGARDERE" || fmt === "NUEVO_FORMATO" || fmt === "CASTELLDEMAR") {
     for (const raw0 of lines) {
       const t = clean(raw0);
       if (!t) continue;
@@ -1212,6 +1232,7 @@ function autoDetect(text: string){
   if (/\t\d+\t\d+\s+|\s{2,}\d+\s{2,}\d+\s+/.test(text)) return "FRUTAS";
   if (/garonda/i.test(text)) return "GARONDA";
   if (/Importe de\s*línea/i.test(text) || /\bONA HOTEL\b/i.test(text)) return "ONA";
+  if (/castell\s*de\s*mar/i.test(text)) return "CASTELLDEMAR";
   const textLines = text.split(/\r?\n/).filter(l => l.trim());
   if (textLines.length > 0 && /^\s*\d{9}\s+[A-Za-z]/.test(textLines[0]) && /\s+\d+(?:\.\d+)?\s+[A-Za-z]+\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?$/.test(textLines[0])) {
     return "GARONDA";
@@ -1219,6 +1240,16 @@ function autoDetect(text: string){
   if (textLines.length > 0 && /^\s*\d{7}\s+[A-Za-z]/.test(textLines[0]) && /\s+\d+(?:\.\d+)?\s+[A-Za-z]+\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?$/.test(textLines[0])) {
     return "BIOEN";
   }
+  
+  if (textLines.length > 0) {
+    let matchCount = 0;
+    const castellPattern = /^\s*(?:\d+|CM\d+)\s+.+?\s+\d+\s+\d+(?:[.,]\d+)?\s+[A-Za-z]+.*$/;
+    for (const l of textLines) {
+      if (castellPattern.test(l)) matchCount++;
+    }
+    if (matchCount > 0 && matchCount / textLines.length > 0.8) return "CASTELLDEMAR";
+  }
+
   if (/^\s*\d+\s+(?:.*\s+)?\d+\.\d{2}\s+[A-Za-z]+\s*$/m.test(text)) return "HELIOS";
   return "HM";
 }
@@ -1244,6 +1275,7 @@ async function parseBy(fmt: string, mergedLines: string[]){
       (fmt === "FRUTAS") ? parseFRUTAS(line) :
       (fmt === "LAGARDERE") ? parseLAGARDERE(line) :
       (fmt === "ONA") ? parseONA(line) :
+      (fmt === "CASTELLDEMAR") ? parseCASTELLDEMAR(line) :
       (fmt === "NUEVO_FORMATO") ? parseNUEVO_FORMATO(line) :
       parseHM(line)
     );
@@ -1588,7 +1620,8 @@ export default function App() {
                    parsedData.fmt === "GARONDA" ? "cfgGARONDA" : 
                    parsedData.fmt === "LAGARDERE" ? "cfgLAGARDERE" : 
                    parsedData.fmt === "NUEVO_FORMATO" ? "cfgNUEVO_FORMATO" : 
-                   parsedData.fmt === "ONA" ? "cfgONA" : 
+                   parsedData.fmt === "ONA" ? "cfgONA" :
+                   parsedData.fmt === "CASTELLDEMAR" ? "cfgCASTELLDEMAR" : 
                    parsedData.fmt === "CAPDEMAR" ? "cfgCAPDEMAR" : "cfgHM";
                    
     const rawWanted = config[fmtKey as keyof typeof config] as string;
@@ -1736,6 +1769,7 @@ export default function App() {
               { id: 'BIOEN', label: 'BIOEN' },
               { id: 'GARONDA', label: 'GARONDA' },
               { id: 'ONA', label: 'ONA HOTEL' },
+              { id: 'CASTELLDEMAR', label: 'CASTELL DE MAR' },
               { id: 'FRUTAS', label: 'FRUTAS' },
               { id: 'LAGARDERE', label: 'LAGARDERE' },
               { id: 'NUEVO_FORMATO', label: 'NUEVO FORMATO (VERDE)' },
@@ -1795,6 +1829,7 @@ export default function App() {
                   { key: 'cfgBIOEN', title: 'BIOEN' },
                   { key: 'cfgGARONDA', title: 'GARONDA' },
                   { key: 'cfgONA', title: 'ONA HOTEL' },
+                  { key: 'cfgCASTELLDEMAR', title: 'CASTELL DE MAR' },
                   { key: 'cfgFRUTAS', title: 'FRUTAS' },
                   { key: 'cfgLAGARDERE', title: 'LAGARDERE' },
                   { key: 'cfgNUEVO_FORMATO', title: 'NUEVO FORMATO (VERDE)' },
