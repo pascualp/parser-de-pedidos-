@@ -32,6 +32,7 @@ const HEADERS = {
   LAGARDERE: ["EAN", "Código", "Descripción", "Cantidad", "Unidad"],
   CASTELLDEMAR: ["Código", "Descripción", "Cód. proveedor", "Cantidad", "Unidad"],
   FERGUS: ["Código", "Cód. Prov.", "Descripción", "Cantidad", "Unidad", "Precio", "Importe"],
+  ASPMI: ["Código", "Cód. Prov.", "Descripción", "Cantidad", "Unidad", "Precio", "Importe"],
   NUEVO_FORMATO: ["Código", "Descripción", "Precio", "Unidad", "Cantidad"]
 };
 
@@ -116,6 +117,7 @@ const DEFAULT_COPY_CFG = {
   cfgLAGARDERE: "EAN\nCódigo\nDescripción\nCantidad\nUnidad",
   cfgCASTELLDEMAR: "Código\nDescripción\nCód. proveedor\nCantidad\nUnidad",
   cfgFERGUS: "Código\nCód. Prov.\nDescripción\nCantidad\nUnidad\nPrecio\nImporte",
+  cfgASPMI: "Código\nCód. Prov.\nDescripción\nCantidad\nUnidad\nPrecio\nImporte",
   cfgNUEVO_FORMATO: "Código\nDescripción\nPrecio\nUnidad\nCantidad",
   includeHeader: true,
   strictCopy: true
@@ -1125,6 +1127,72 @@ async function parseFERGUS(lines: string[]) {
   return { rows, errors };
 }
 
+// ================= ASPMI =================
+async function parseASPMI(lines: string[]) {
+  const rows: string[][] = [];
+  const errors: {original: string, reason: string}[] = [];
+
+  const grouped: string[] = [];
+  let cur = '';
+  for (const raw of lines) {
+    let t = normWS(raw);
+    if (!t) continue;
+    
+    if (looksLikeTotalsOrFooter(t) || /^(?:Lin:\s*\d+|Pedido\s+[A-Za-z0-9]+|\d+)$/i.test(t)) continue;
+    
+    if (!cur) cur = t;
+    else cur = cur + ' ' + t;
+    
+    const hasPrecioUnit = /Precio Unit\./i.test(cur);
+    const hasCode = /^\d+\s+\d+\b/.test(cur) || /\b\d+\s+\d+$/.test(cur);
+    if (hasPrecioUnit && hasCode) {
+      grouped.push(cur);
+      cur = '';
+    }
+  }
+  if (cur) {
+    const hasPrecioUnit = /Precio Unit\./i.test(cur);
+    const hasCode = /^\d+\s+\d+\b/.test(cur) || /\b\d+\s+\d+$/.test(cur);
+    if (hasPrecioUnit && hasCode) {
+       grouped.push(cur);
+    }
+  }
+
+  for (const group of grouped) {
+    let m = group.match(/^(\d+)\s+(\d+)\s+(.+?)\s+([\d,.]+)\s+([A-Za-z]+)\s+Precio Unit\.\s+([\d,.]+)\s+([\d,.]+)$/);
+    if (m) {
+      const code = m[1];
+      const prov = m[2];
+      const desc = m[3].trim();
+      const qty = stripDot00(m[4]);
+      const unit = m[5];
+      const price = stripDot00(m[6]);
+      const total = stripDot00(m[7]);
+      const finalCode = await getSavedCode(desc, "ASPMI") || code;
+      rows.push([finalCode, prov, desc, qty, unit, price, total]);
+      continue;
+    }
+
+    m = group.match(/^(.+?)\s+([\d,.]+)\s+([A-Za-z]+)\s+Precio Unit\.\s+([\d,.]+)\s+([\d,.]+)\s+([A-Za-zÑÁÉÍÓÚ\/\-\s]+?)\s+(\d+)\s+(\d+)$/);
+    if (m) {
+      const desc = (m[1] + ' ' + m[6].trim()).trim();
+      const qty = stripDot00(m[2]);
+      const unit = m[3];
+      const price = stripDot00(m[4]);
+      const total = stripDot00(m[5]);
+      const code = m[7];
+      const prov = m[8];
+      const finalCode = await getSavedCode(desc, "ASPMI") || code;
+      rows.push([finalCode, prov, desc, qty, unit, price, total]);
+      continue;
+    }
+
+    errors.push({ original: group, reason: "Formato ASPMI incompleto" });
+  }
+
+  return { rows, errors };
+}
+
 // ================= CASTELL DE MAR =================
 async function parseCASTELLDEMAR(line: string): Promise<ParseResult> {
   const original = line;
@@ -1235,7 +1303,7 @@ function joinBrokenLines(lines: string[], fmt: string){
     return out;
   }
 
-  if (fmt === "NIUUT" || fmt === "H24" || fmt === "CAPDEMAR" || fmt === "CLUBMARTHA" || fmt === "BIOEN" || fmt === "GARONDA" || fmt === "LAGARDERE" || fmt === "NUEVO_FORMATO" || fmt === "CASTELLDEMAR" || fmt === "FERGUS") {
+  if (fmt === "NIUUT" || fmt === "H24" || fmt === "CAPDEMAR" || fmt === "CLUBMARTHA" || fmt === "BIOEN" || fmt === "GARONDA" || fmt === "LAGARDERE" || fmt === "NUEVO_FORMATO" || fmt === "CASTELLDEMAR" || fmt === "FERGUS" || fmt === "ASPMI") {
     for (const raw0 of lines) {
       const t = clean(raw0);
       if (!t) continue;
@@ -1294,6 +1362,7 @@ function autoDetect(text: string){
   if (/Importe de\s*línea/i.test(text) || /\bONA HOTEL\b/i.test(text)) return "ONA";
   if (/castell\s*de\s*mar/i.test(text)) return "CASTELLDEMAR";
   if (/fergus/i.test(text) || /Pedido\s+FSC/i.test(text) || (/Precio\s+Unit\./i.test(text) && /\b\d+\s+[A-Z]{2,4}\d{3,5}\b/.test(text))) return "FERGUS";
+  if (/ASPMI/i.test(text) || /Pedido\s+ASPMI/i.test(text) || (/Precio\s+Unit\./i.test(text) && /^\d+\s+\d+\b/m.test(text))) return "ASPMI";
   const textLines = text.split(/\r?\n/).filter(l => l.trim());
   if (textLines.length > 0 && /^\s*\d{9}\s+[A-Za-z]/.test(textLines[0]) && /\s+\d+(?:\.\d+)?\s+[A-Za-z]+\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?$/.test(textLines[0])) {
     return "GARONDA";
@@ -1321,6 +1390,7 @@ async function parseBy(fmt: string, mergedLines: string[]){
   if (fmt === "CAPDEMAR") return await parseCAPDEMAR(mergedLines);
   if (fmt === "CLUBMARTHA") return await parseCLUBMARTHA(mergedLines);
   if (fmt === "FERGUS") return await parseFERGUS(mergedLines);
+  if (fmt === "ASPMI") return await parseASPMI(mergedLines);
 
   const results = await Promise.all(mergedLines.map(async line => {
     return await (
@@ -1685,6 +1755,7 @@ export default function App() {
                    parsedData.fmt === "ONA" ? "cfgONA" :
                    parsedData.fmt === "CASTELLDEMAR" ? "cfgCASTELLDEMAR" : 
                    parsedData.fmt === "FERGUS" ? "cfgFERGUS" :
+                   parsedData.fmt === "ASPMI" ? "cfgASPMI" :
                    parsedData.fmt === "CAPDEMAR" ? "cfgCAPDEMAR" : "cfgHM";
                    
     const rawWanted = config[fmtKey as keyof typeof config] as string;
@@ -1834,6 +1905,7 @@ export default function App() {
               { id: 'ONA', label: 'ONA HOTEL' },
               { id: 'CASTELLDEMAR', label: 'CASTELL DE MAR' },
               { id: 'FERGUS', label: 'FERGUS' },
+              { id: 'ASPMI', label: 'ASPMI' },
               { id: 'FRUTAS', label: 'FRUTAS' },
               { id: 'LAGARDERE', label: 'LAGARDERE' },
               { id: 'NUEVO_FORMATO', label: 'NUEVO FORMATO (VERDE)' },
@@ -1895,6 +1967,7 @@ export default function App() {
                   { key: 'cfgONA', title: 'ONA HOTEL' },
                   { key: 'cfgCASTELLDEMAR', title: 'CASTELL DE MAR' },
                   { key: 'cfgFERGUS', title: 'FERGUS' },
+                  { key: 'cfgASPMI', title: 'ASPMI' },
                   { key: 'cfgFRUTAS', title: 'FRUTAS' },
                   { key: 'cfgLAGARDERE', title: 'LAGARDERE' },
                   { key: 'cfgNUEVO_FORMATO', title: 'NUEVO FORMATO (VERDE)' },
