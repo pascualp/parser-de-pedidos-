@@ -34,6 +34,7 @@ const HEADERS = {
   FERGUS: ["Código", "Cód. Prov.", "Descripción", "Cantidad", "Unidad", "Precio", "Importe"],
   ASPMI: ["Código", "Cód. Prov.", "Descripción", "Cantidad", "Unidad", "Precio", "Importe"],
   BONANZANEW: ["Código", "Descripción", "Cantidad", "Unidad", "Precio", "Importe"],
+  ELPUEBLO: ["Código", "Descripción", "Cantidad", "Unidad", "Precio", "Importe"],
   NUEVO_FORMATO: ["Código", "Descripción", "Precio", "Unidad", "Cantidad"]
 };
 
@@ -120,6 +121,7 @@ const DEFAULT_COPY_CFG = {
   cfgFERGUS: "Código\nCód. Prov.\nDescripción\nCantidad\nUnidad\nPrecio\nImporte",
   cfgASPMI: "Código\nCód. Prov.\nDescripción\nCantidad\nUnidad\nPrecio\nImporte",
   cfgBONANZANEW: "Código\nDescripción\nCantidad\nUnidad\nPrecio\nImporte",
+  cfgELPUEBLO: "Código\nDescripción\nCantidad\nUnidad\nPrecio\nImporte",
   cfgNUEVO_FORMATO: "Código\nDescripción\nPrecio\nUnidad\nCantidad",
   includeHeader: true,
   strictCopy: true
@@ -614,7 +616,49 @@ async function parseBONANZANEW(lines: string[]) {
   return { rows, errors };
 }
 
-// ================= NIU / UT =================
+// ================= EL PUEBLO =================
+async function parseELPUEBLO(lines: string[]) {
+  const rows: string[][] = [];
+  const errors: {original: string, reason: string}[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    let t = normWS(raw);
+    if (!t) continue;
+    if (looksLikeTotalsOrFooter(t)) continue;
+
+    if (/^\d+\s+[A-Za-zÁÉÍÓÚÜÑ0-9\s()\-\/]+$/.test(t) && !/\d{2}\.\d{2}\.\d{4}/.test(t)) {
+      continue;
+    }
+
+    const m = t.match(/^(\d+)\s+(\d{2}\.\d{2}\.\d{4})\s+(\d+)\s+(.+?)\s+([\d,.]+)\s+([A-Za-z\s()]+?)\s+([\d,.]+)\s+([\d,.]+)\s+\d+$/);
+    if (m) {
+      const code = m[3];
+      const desc = m[4].trim();
+      const qty = stripDot00(m[5]);
+      const unit = m[6].trim();
+      const price = stripDot00(m[7]);
+      const total = stripDot00(m[8]);
+
+      if (i + 1 < lines.length) {
+        const next = normWS(lines[i + 1]);
+        if (next === code + ' ' + desc) {
+          i++;
+        }
+      }
+
+      const finalCode = await getSavedCode(desc, "ELPUEBLO") || code;
+      rows.push([finalCode, desc, qty, unit, price, total]);
+    } else {
+      if (/^\d+\s+[A-Za-zÁÉÍÓÚÜÑ0-9\s()-]+$/.test(t)) {
+        continue;
+      }
+      errors.push({ original: raw, reason: "Formato EL PUEBLO incompleto o no reconocido" });
+    }
+  }
+
+  return { rows, errors };
+}
 const RE_NIU_PRICE_LINE = /^(.*?)\s*(\d+(?:,\d+)?)\s*(?:([a-zA-Z.]{1,10})\s+)?Precio\s+Unit\.\s+(\d+(?:,\d+)?)\s+(\d+(?:,\d+)?)\s*$/i;
 const RE_NIU_REF_ONLY = /^(\d+)\s+(\d+\|\d+)(?:\s+(.*))?$/;
 const RE_NIU_UNIT_LINE = /^\s*(Kilogramos|Kilogramo|Kilos|KG|Unidades|un|ud|ST|Caja|caj|paq)\s*$/i;
@@ -1349,7 +1393,7 @@ function joinBrokenLines(lines: string[], fmt: string){
     return out;
   }
 
-  if (fmt === "NIUUT" || fmt === "H24" || fmt === "CAPDEMAR" || fmt === "CLUBMARTHA" || fmt === "BIOEN" || fmt === "GARONDA" || fmt === "LAGARDERE" || fmt === "NUEVO_FORMATO" || fmt === "CASTELLDEMAR" || fmt === "FERGUS" || fmt === "ASPMI" || fmt === "BONANZANEW") {
+  if (fmt === "NIUUT" || fmt === "H24" || fmt === "CAPDEMAR" || fmt === "CLUBMARTHA" || fmt === "BIOEN" || fmt === "GARONDA" || fmt === "LAGARDERE" || fmt === "NUEVO_FORMATO" || fmt === "CASTELLDEMAR" || fmt === "FERGUS" || fmt === "ASPMI" || fmt === "BONANZANEW" || fmt === "ELPUEBLO") {
     for (const raw0 of lines) {
       const t = clean(raw0);
       if (!t) continue;
@@ -1410,6 +1454,7 @@ function autoDetect(text: string){
   if (/fergus/i.test(text) || /Pedido\s+FSC/i.test(text) || (/Precio\s+Unit\./i.test(text) && /\b\d+\s+[A-Z]{2,4}\d{3,5}\b/.test(text))) return "FERGUS";
   if (/ASPMI/i.test(text) || /Pedido\s+ASPMI/i.test(text) || (/Precio\s+Unit\./i.test(text) && /^\d+\s+\d+\b/m.test(text))) return "ASPMI";
   if (/^Artículo\s+\d+/mi.test(text)) return "BONANZANEW";
+  if (/^\s*\d+\s+\d{2}\.\d{2}\.\d{4}\s+\d+/m.test(text)) return "ELPUEBLO";
   const textLines = text.split(/\r?\n/).filter(l => l.trim());
   if (textLines.length > 0 && /^\s*\d{9}\s+[A-Za-z]/.test(textLines[0]) && /\s+\d+(?:\.\d+)?\s+[A-Za-z]+\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?$/.test(textLines[0])) {
     return "GARONDA";
@@ -1439,6 +1484,7 @@ async function parseBy(fmt: string, mergedLines: string[]){
   if (fmt === "FERGUS") return await parseFERGUS(mergedLines);
   if (fmt === "ASPMI") return await parseASPMI(mergedLines);
   if (fmt === "BONANZANEW") return await parseBONANZANEW(mergedLines);
+  if (fmt === "ELPUEBLO") return await parseELPUEBLO(mergedLines);
 
   const results = await Promise.all(mergedLines.map(async line => {
     return await (
@@ -1805,6 +1851,7 @@ export default function App() {
                    parsedData.fmt === "FERGUS" ? "cfgFERGUS" :
                    parsedData.fmt === "ASPMI" ? "cfgASPMI" :
                    parsedData.fmt === "BONANZANEW" ? "cfgBONANZANEW" :
+                   parsedData.fmt === "ELPUEBLO" ? "cfgELPUEBLO" :
                    parsedData.fmt === "CAPDEMAR" ? "cfgCAPDEMAR" : "cfgHM";
                    
     const rawWanted = config[fmtKey as keyof typeof config] as string;
@@ -1956,6 +2003,7 @@ export default function App() {
               { id: 'FERGUS', label: 'FERGUS' },
               { id: 'ASPMI', label: 'ASPMI' },
               { id: 'BONANZANEW', label: 'BONANZA (ARTÍCULO)' },
+              { id: 'ELPUEBLO', label: 'EL PUEBLO' },
               { id: 'FRUTAS', label: 'FRUTAS' },
               { id: 'LAGARDERE', label: 'LAGARDERE' },
               { id: 'NUEVO_FORMATO', label: 'NUEVO FORMATO (VERDE)' },
@@ -2019,6 +2067,7 @@ export default function App() {
                   { key: 'cfgFERGUS', title: 'FERGUS' },
                   { key: 'cfgASPMI', title: 'ASPMI' },
                   { key: 'cfgBONANZANEW', title: 'BONANZA (ARTÍCULO)' },
+                  { key: 'cfgELPUEBLO', title: 'EL PUEBLO' },
                   { key: 'cfgFRUTAS', title: 'FRUTAS' },
                   { key: 'cfgLAGARDERE', title: 'LAGARDERE' },
                   { key: 'cfgNUEVO_FORMATO', title: 'NUEVO FORMATO (VERDE)' },
