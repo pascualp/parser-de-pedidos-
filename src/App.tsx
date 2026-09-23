@@ -33,6 +33,7 @@ const HEADERS = {
   CASTELLDEMAR: ["Código", "Descripción", "Cód. proveedor", "Cantidad", "Unidad"],
   FERGUS: ["Código", "Cód. Prov.", "Descripción", "Cantidad", "Unidad", "Precio", "Importe"],
   ASPMI: ["Código", "Cód. Prov.", "Descripción", "Cantidad", "Unidad", "Precio", "Importe"],
+  BONANZANEW: ["Código", "Descripción", "Cantidad", "Unidad", "Precio", "Importe"],
   NUEVO_FORMATO: ["Código", "Descripción", "Precio", "Unidad", "Cantidad"]
 };
 
@@ -118,6 +119,7 @@ const DEFAULT_COPY_CFG = {
   cfgCASTELLDEMAR: "Código\nDescripción\nCód. proveedor\nCantidad\nUnidad",
   cfgFERGUS: "Código\nCód. Prov.\nDescripción\nCantidad\nUnidad\nPrecio\nImporte",
   cfgASPMI: "Código\nCód. Prov.\nDescripción\nCantidad\nUnidad\nPrecio\nImporte",
+  cfgBONANZANEW: "Código\nDescripción\nCantidad\nUnidad\nPrecio\nImporte",
   cfgNUEVO_FORMATO: "Código\nDescripción\nPrecio\nUnidad\nCantidad",
   includeHeader: true,
   strictCopy: true
@@ -566,6 +568,50 @@ async function parseBON(line: string): Promise<ParseResult> {
   if (!desc) return { ok:false, original, reason:"Descripción vacía" };
   const code = await getSavedCode(desc, "BONANZA");
   return { ok:true, row:[code, desc, qty, umRaw], original };
+}
+
+// ================= BONANZA NEW (ARTICULO) =================
+async function parseBONANZANEW(lines: string[]) {
+  const rows: string[][] = [];
+  const errors: {original: string, reason: string}[] = [];
+
+  for (const raw of lines) {
+    let t = normWS(raw);
+    if (!t) continue;
+    if (looksLikeTotalsOrFooter(t)) continue;
+
+    const parts = t.split(/\s+/);
+    if (parts.length < 6 || parts[0] !== "Artículo") {
+      errors.push({ original: raw, reason: "Formato BONANZA NUEVO incompleto" });
+      continue;
+    }
+
+    const total = parts.pop()!;
+    const disc = parts.pop()!;
+    const price = parts.pop()!;
+    const qty = parts.pop()!;
+    let unit = parts.pop()!;
+    
+    let descTokens = [...parts];
+    descTokens.shift(); // remove 'Artículo'
+    const code = descTokens.shift() || ""; // remove code
+    
+    const lastDesc = descTokens[descTokens.length - 1];
+    if (['BAN', 'PZ'].includes(lastDesc)) {
+      unit = descTokens.pop() + ' ' + unit;
+    }
+    
+    const desc = descTokens.join(' ').trim();
+    if (!desc) {
+      errors.push({ original: raw, reason: "Descripción vacía BONANZA NUEVO" });
+      continue;
+    }
+
+    const finalCode = await getSavedCode(desc, "BONANZANEW") || code;
+    rows.push([finalCode, desc, stripDot00(qty), unit, stripDot00(price), stripDot00(total)]);
+  }
+
+  return { rows, errors };
 }
 
 // ================= NIU / UT =================
@@ -1303,7 +1349,7 @@ function joinBrokenLines(lines: string[], fmt: string){
     return out;
   }
 
-  if (fmt === "NIUUT" || fmt === "H24" || fmt === "CAPDEMAR" || fmt === "CLUBMARTHA" || fmt === "BIOEN" || fmt === "GARONDA" || fmt === "LAGARDERE" || fmt === "NUEVO_FORMATO" || fmt === "CASTELLDEMAR" || fmt === "FERGUS" || fmt === "ASPMI") {
+  if (fmt === "NIUUT" || fmt === "H24" || fmt === "CAPDEMAR" || fmt === "CLUBMARTHA" || fmt === "BIOEN" || fmt === "GARONDA" || fmt === "LAGARDERE" || fmt === "NUEVO_FORMATO" || fmt === "CASTELLDEMAR" || fmt === "FERGUS" || fmt === "ASPMI" || fmt === "BONANZANEW") {
     for (const raw0 of lines) {
       const t = clean(raw0);
       if (!t) continue;
@@ -1363,6 +1409,7 @@ function autoDetect(text: string){
   if (/castell\s*de\s*mar/i.test(text)) return "CASTELLDEMAR";
   if (/fergus/i.test(text) || /Pedido\s+FSC/i.test(text) || (/Precio\s+Unit\./i.test(text) && /\b\d+\s+[A-Z]{2,4}\d{3,5}\b/.test(text))) return "FERGUS";
   if (/ASPMI/i.test(text) || /Pedido\s+ASPMI/i.test(text) || (/Precio\s+Unit\./i.test(text) && /^\d+\s+\d+\b/m.test(text))) return "ASPMI";
+  if (/^Artículo\s+\d+/mi.test(text)) return "BONANZANEW";
   const textLines = text.split(/\r?\n/).filter(l => l.trim());
   if (textLines.length > 0 && /^\s*\d{9}\s+[A-Za-z]/.test(textLines[0]) && /\s+\d+(?:\.\d+)?\s+[A-Za-z]+\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?\s+\d+(?:\.\d+)?$/.test(textLines[0])) {
     return "GARONDA";
@@ -1391,6 +1438,7 @@ async function parseBy(fmt: string, mergedLines: string[]){
   if (fmt === "CLUBMARTHA") return await parseCLUBMARTHA(mergedLines);
   if (fmt === "FERGUS") return await parseFERGUS(mergedLines);
   if (fmt === "ASPMI") return await parseASPMI(mergedLines);
+  if (fmt === "BONANZANEW") return await parseBONANZANEW(mergedLines);
 
   const results = await Promise.all(mergedLines.map(async line => {
     return await (
@@ -1756,6 +1804,7 @@ export default function App() {
                    parsedData.fmt === "CASTELLDEMAR" ? "cfgCASTELLDEMAR" : 
                    parsedData.fmt === "FERGUS" ? "cfgFERGUS" :
                    parsedData.fmt === "ASPMI" ? "cfgASPMI" :
+                   parsedData.fmt === "BONANZANEW" ? "cfgBONANZANEW" :
                    parsedData.fmt === "CAPDEMAR" ? "cfgCAPDEMAR" : "cfgHM";
                    
     const rawWanted = config[fmtKey as keyof typeof config] as string;
@@ -1906,6 +1955,7 @@ export default function App() {
               { id: 'CASTELLDEMAR', label: 'CASTELL DE MAR' },
               { id: 'FERGUS', label: 'FERGUS' },
               { id: 'ASPMI', label: 'ASPMI' },
+              { id: 'BONANZANEW', label: 'BONANZA (ARTÍCULO)' },
               { id: 'FRUTAS', label: 'FRUTAS' },
               { id: 'LAGARDERE', label: 'LAGARDERE' },
               { id: 'NUEVO_FORMATO', label: 'NUEVO FORMATO (VERDE)' },
@@ -1968,6 +2018,7 @@ export default function App() {
                   { key: 'cfgCASTELLDEMAR', title: 'CASTELL DE MAR' },
                   { key: 'cfgFERGUS', title: 'FERGUS' },
                   { key: 'cfgASPMI', title: 'ASPMI' },
+                  { key: 'cfgBONANZANEW', title: 'BONANZA (ARTÍCULO)' },
                   { key: 'cfgFRUTAS', title: 'FRUTAS' },
                   { key: 'cfgLAGARDERE', title: 'LAGARDERE' },
                   { key: 'cfgNUEVO_FORMATO', title: 'NUEVO FORMATO (VERDE)' },
