@@ -626,6 +626,7 @@ async function parseELPUEBLO(lines: string[]) {
     let t = normWS(raw);
     if (!t) continue;
     if (looksLikeTotalsOrFooter(t)) continue;
+    if (/falta/i.test(t)) continue;
 
     if (/^\d+\s+[A-Za-zÁÉÍÓÚÜÑ0-9\s()\-\/]+$/.test(t) && !/\d{2}\.\d{2}\.\d{4}/.test(t)) {
       continue;
@@ -642,7 +643,7 @@ async function parseELPUEBLO(lines: string[]) {
 
       if (i + 1 < lines.length) {
         const next = normWS(lines[i + 1]);
-        if (next === code + ' ' + desc) {
+        if (next === code + ' ' + desc || /falta/i.test(next) || (/^\d+\s+[A-Za-zÁÉÍÓÚÜÑ0-9\s()-]+$/.test(next) && !/\d{2}\.\d{2}\.\d{4}/.test(next))) {
           i++;
         }
       }
@@ -650,10 +651,7 @@ async function parseELPUEBLO(lines: string[]) {
       const finalCode = await getSavedCode(desc, "ELPUEBLO") || code;
       rows.push([finalCode, desc, qty, unit, price, total]);
     } else {
-      if (/^\d+\s+[A-Za-zÁÉÍÓÚÜÑ0-9\s()-]+$/.test(t)) {
-        continue;
-      }
-      errors.push({ original: raw, reason: "Formato EL PUEBLO incompleto o no reconocido" });
+      continue;
     }
   }
 
